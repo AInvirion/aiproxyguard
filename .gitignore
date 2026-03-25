@@ -103,3 +103,4 @@ temp/
 
 # Signatures (fetched at build time) - only top-level directory
 /signatures/
+docs/
