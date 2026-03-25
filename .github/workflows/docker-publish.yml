@@ -25,6 +25,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Python for signature verification
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install signature verification dependencies
+        run: pip install cryptography
+
+      - name: Fetch latest signatures from aiproxyguard-signatures
+        run: |
+          chmod +x scripts/fetch-signatures.sh
+          ./scripts/fetch-signatures.sh
+        env:
+          SIGNATURES_DIR: signatures
+          TIER: free
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
