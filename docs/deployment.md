@@ -4,6 +4,8 @@ title: Deployment
 
 # Deployment
 
+> **DigitalOcean users**: See the dedicated [DigitalOcean Guide](digitalocean-guide.md) for step-by-step App Platform deployment.
+
 ## Docker
 
 ### Basic
