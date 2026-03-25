@@ -31,11 +31,10 @@ from aiproxyguard.router import Router
 from aiproxyguard.identity import IdentityResolver
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
-from aiproxyguard.scanner.response import ResponseScanMode, ResponseBlockedError
 from aiproxyguard.signatures.loader import load_signatures
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.logging import get_logger
-from aiproxyguard.control_plane import ControlPlaneClient, init_client, get_client
+from aiproxyguard.control_plane import init_client, get_client
 
 logger = get_logger("server")
 

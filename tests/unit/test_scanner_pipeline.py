@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import pytest
-from aiproxyguard.scanner.pipeline import ScannerPipeline, ScanResult
+from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.signatures.models import Signature, SignatureSet
 from aiproxyguard.config import ScannerConfig
 

@@ -20,7 +20,6 @@ import asyncio
 import hashlib
 import logging
 import platform
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable

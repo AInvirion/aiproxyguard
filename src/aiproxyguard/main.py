@@ -119,7 +119,7 @@ def cmd_generate_ca(args: argparse.Namespace) -> int:
             validity_days=args.validity_days,
             key_size=args.key_size,
         )
-        print(f"CA certificate generated:")
+        print("CA certificate generated:")
         print(f"  Certificate: {args.cert}")
         print(f"  Private key: {args.key}")
         print()

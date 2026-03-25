@@ -17,7 +17,6 @@
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-import json
 
 from aiproxyguard.server import create_app
 from aiproxyguard.config import (

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from __future__ import annotations
-import unicodedata
 from dataclasses import dataclass
 from aiproxyguard.scanner.decoder import decode_base64, decode_url
 

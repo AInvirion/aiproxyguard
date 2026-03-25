@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 from cryptography import x509
@@ -29,7 +28,6 @@ from cryptography.x509.oid import NameOID
 from aiproxyguard.tls import (
     CertificateAuthority,
     CertificateCache,
-    TLSConfig,
     generate_ca,
     load_tls_config,
 )

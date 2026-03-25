@@ -16,7 +16,7 @@
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from aiproxyguard.scanner.response import (
     ResponseScanner,

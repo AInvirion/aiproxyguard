@@ -126,7 +126,7 @@ class ManifestVerifier:
             if previous_hash != self._last_manifest_hash:
                 return VerificationResult(
                     valid=False,
-                    error=f"Chain verification failed: previous_hash mismatch",
+                    error="Chain verification failed: previous_hash mismatch",
                     sequence=sequence,
                 )
 
