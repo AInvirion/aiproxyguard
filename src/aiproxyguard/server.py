@@ -244,9 +244,22 @@ async def proxy_handler(request: web.Request) -> web.Response:
         session: aiohttp.ClientSession = app["http_session"]
         # Build headers (copy relevant headers)
         headers = {}
-        for key in ("content-type", "accept", "authorization", "api-key", "x-api-key"):
+        # Always forward content-type and accept
+        for key in ("content-type", "accept"):
             if key in request.headers:
                 headers[key] = request.headers[key]
+
+        # Forward auth header based on route config, with fallbacks
+        auth_headers_to_check = ["authorization", "api-key", "x-api-key"]
+        if route.auth_header:
+            # Prioritize the configured auth header
+            auth_headers_to_check = [route.auth_header.lower()] + [
+                h for h in auth_headers_to_check if h != route.auth_header.lower()
+            ]
+        for key in auth_headers_to_check:
+            if key in request.headers:
+                headers[key] = request.headers[key]
+                break  # Only forward one auth header
 
         async with session.request(
             method=request.method,
