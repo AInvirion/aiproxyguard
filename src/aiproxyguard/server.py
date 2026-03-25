@@ -159,8 +159,12 @@ async def proxy_handler(request: web.Request) -> web.Response:
         scan_start = time.monotonic()
         try:
             text = body.decode("utf-8")
-            # Run CPU-bound scanning in thread pool to avoid blocking event loop
-            scan_result = await scanner.scan_async(text)
+            # Run CPU-bound scanning in thread pool with timeout
+            timeout_s = config.security.scanner_timeout_ms / 1000.0
+            scan_result = await asyncio.wait_for(
+                scanner.scan_async(text),
+                timeout=timeout_s,
+            )
             scan_duration = time.monotonic() - scan_start
             metrics.record_scan("pipeline", scan_result.action, scan_duration)
 
@@ -229,6 +233,19 @@ async def proxy_handler(request: web.Request) -> web.Response:
                         "client_id": client_id,
                         "signature_id": scan_result.signature_id,
                     },
+                )
+        except asyncio.TimeoutError:
+            # Scanner timed out - use failure mode
+            scan_duration = time.monotonic() - scan_start
+            metrics.record_scan("pipeline", "timeout", scan_duration)
+            logger.warning(
+                "Scanner timeout",
+                extra={"timeout_ms": config.security.scanner_timeout_ms},
+            )
+            if config.security.failure_mode == "closed":
+                return web.json_response(
+                    {"error": {"type": "scanner_timeout", "message": "Scanner timed out"}},
+                    status=503,
                 )
         except Exception as e:
             # Scanner error - use failure mode
@@ -315,8 +332,12 @@ async def proxy_handler(request: web.Request) -> web.Response:
                 scan_start = time.monotonic()
                 try:
                     response_text = response_body.decode("utf-8")
-                    # Run CPU-bound scanning in thread pool to avoid blocking event loop
-                    response_scan_result = await asyncio.to_thread(response_scanner.scan, response_text)
+                    # Run CPU-bound scanning in thread pool with timeout
+                    timeout_s = config.security.scanner_timeout_ms / 1000.0
+                    response_scan_result = await asyncio.wait_for(
+                        asyncio.to_thread(response_scanner.scan, response_text),
+                        timeout=timeout_s,
+                    )
                     scan_duration = time.monotonic() - scan_start
                     metrics.record_scan("response", "block" if response_scan_result.blocked else "allow", scan_duration)
 
@@ -372,6 +393,14 @@ async def proxy_handler(request: web.Request) -> web.Response:
                                     "client_id": client_id,
                                 },
                             )
+                except asyncio.TimeoutError:
+                    scan_duration = time.monotonic() - scan_start
+                    metrics.record_scan("response", "timeout", scan_duration)
+                    logger.warning(
+                        "Response scanner timeout",
+                        extra={"timeout_ms": config.security.scanner_timeout_ms},
+                    )
+                    # Fail open for response scanning - return the response
                 except Exception as e:
                     logger.error(f"Response scanner error: {e}")
                     # In case of scanner error, we still return the response

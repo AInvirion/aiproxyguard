@@ -317,7 +317,12 @@ class TLSInterceptProxy:
             scan_start = time.monotonic()
             try:
                 text = body.decode("utf-8")
-                scan_result = self._scanner.scan(text)
+                # Run with timeout
+                timeout_s = self._config.security.scanner_timeout_ms / 1000.0
+                scan_result = await asyncio.wait_for(
+                    asyncio.to_thread(self._scanner.scan, text),
+                    timeout=timeout_s,
+                )
                 scan_duration = time.monotonic() - scan_start
                 self._metrics.record_scan("pipeline", scan_result.action, scan_duration)
 
@@ -359,6 +364,20 @@ class TLSInterceptProxy:
                         },
                     )
 
+            except asyncio.TimeoutError:
+                scan_duration = time.monotonic() - scan_start
+                self._metrics.record_scan("pipeline", "timeout", scan_duration)
+                logger.warning(
+                    "Scanner timeout",
+                    extra={"timeout_ms": self._config.security.scanner_timeout_ms},
+                )
+                if self._config.security.failure_mode == "closed":
+                    await self._send_json_response(
+                        writer,
+                        503,
+                        {"error": {"type": "scanner_timeout", "message": "Scanner timed out"}},
+                    )
+                    return
             except Exception as e:
                 if self._config.security.failure_mode == "closed":
                     await self._send_json_response(
@@ -401,8 +420,11 @@ class TLSInterceptProxy:
                     try:
                         response_text = response_body.decode("utf-8")
                         scan_start = time.monotonic()
-                        response_scan_result = await asyncio.to_thread(
-                            response_scanner.scan, response_text
+                        # Run with timeout
+                        timeout_s = self._config.security.scanner_timeout_ms / 1000.0
+                        response_scan_result = await asyncio.wait_for(
+                            asyncio.to_thread(response_scanner.scan, response_text),
+                            timeout=timeout_s,
                         )
                         scan_duration = time.monotonic() - scan_start
                         self._metrics.record_scan(
@@ -455,6 +477,27 @@ class TLSInterceptProxy:
                     except UnicodeDecodeError:
                         # Binary response, skip scanning
                         pass
+                    except asyncio.TimeoutError:
+                        scan_duration = time.monotonic() - scan_start
+                        self._metrics.record_scan("response", "timeout", scan_duration)
+                        logger.warning(
+                            "Response scanner timeout",
+                            extra={"timeout_ms": self._config.security.scanner_timeout_ms},
+                        )
+                        # On timeout, pass through response in open mode
+                        # In closed mode, block the response
+                        if self._config.security.failure_mode == "closed":
+                            await self._send_json_response(
+                                writer,
+                                502,
+                                {
+                                    "error": {
+                                        "type": "scanner_timeout",
+                                        "message": "Response scanner timed out",
+                                    }
+                                },
+                            )
+                            return
                     except Exception as e:
                         logger.error(f"Response scanner error: {e}")
 
