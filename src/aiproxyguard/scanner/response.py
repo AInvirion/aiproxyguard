@@ -373,6 +373,7 @@ async def scan_streaming_response(
     """
     handler = SSEResponseHandler(scanner, on_detection)
     collected_chunks: list[bytes] = []
+    buffered_released = False  # Track if we've released buffered chunks
 
     async for chunk in chunks:
         result_chunk, scan_result = await handler.process_chunk(chunk)
@@ -381,13 +382,26 @@ async def scan_streaming_response(
             raise ResponseBlockedError(scan_result)
 
         if scanner.mode == ResponseScanMode.FULL:
-            # Collect chunks for full scan
+            # Collect chunks for full scan - release only at the end
             collected_chunks.append(chunk)
-        elif result_chunk is not None:
-            yield result_chunk
+
         elif scanner.mode == ResponseScanMode.BUFFERED:
-            # Store buffered chunks for later release
-            collected_chunks.append(chunk)
+            if result_chunk is not None:
+                # Initial scan passed - release buffered chunks immediately
+                if not buffered_released and collected_chunks:
+                    for buffered_chunk in collected_chunks:
+                        yield buffered_chunk
+                    collected_chunks.clear()
+                    buffered_released = True
+                yield result_chunk
+            else:
+                # Still buffering - store for later
+                collected_chunks.append(chunk)
+
+        else:
+            # Passthrough mode
+            if result_chunk is not None:
+                yield result_chunk
 
     # Finalize and release any remaining content
     _, final_result = await handler.finalize()
@@ -395,11 +409,11 @@ async def scan_streaming_response(
     if final_result and final_result.blocked:
         raise ResponseBlockedError(final_result)
 
-    # For buffered mode, release collected chunks after initial scan
-    # For full mode, release all chunks after complete scan
-    if scanner.mode in (ResponseScanMode.BUFFERED, ResponseScanMode.FULL):
-        for chunk in collected_chunks:
-            yield chunk
+    # Release remaining chunks:
+    # - BUFFERED: Release if content was smaller than buffer threshold
+    # - FULL: Release all chunks after complete scan passes
+    for chunk in collected_chunks:
+        yield chunk
 
 
 class ResponseBlockedError(Exception):
