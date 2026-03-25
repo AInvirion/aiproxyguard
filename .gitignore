@@ -100,3 +100,6 @@ temp/
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+# Signatures (fetched at build time)
+signatures/
