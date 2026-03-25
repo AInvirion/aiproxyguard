@@ -427,7 +427,9 @@ def create_app(config: Config) -> web.Application:
     # Routes
     app.router.add_get("/healthz", health_handler)
     app.router.add_get("/readyz", readiness_handler)
-    app.router.add_get("/metrics", metrics_handler)
+    # Only expose /metrics if enabled in config
+    if config.metrics.enabled:
+        app.router.add_get("/metrics", metrics_handler)
     app.router.add_route("*", "/{path:.*}", proxy_handler)
 
     return app
