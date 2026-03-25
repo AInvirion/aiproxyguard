@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO="AInvirion/aiproxyguard-signatures"
-PUBLIC_KEY="g9XbYVr5xQubfNlVwlhR1SLW5XMoILA9LzZiphkQpII="
+PUBLIC_KEY="j4ztN19sQfU0pCqRV/GmlV50+oeqsO18mHQkMQnyb+k="
 SIGNATURES_DIR="${SIGNATURES_DIR:-signatures}"
 TIER="${TIER:-free}"
 
