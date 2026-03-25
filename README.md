@@ -1,173 +1,191 @@
 # AIProxyGuard
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub Issues](https://img.shields.io/github/issues/ainvirion/aiproxyguard.svg)](https://github.com/ainvirion/aiproxyguard/issues)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/ainvirion/aiproxyguard.svg)](https://github.com/ainvirion/aiproxyguard/pulls)
+[![Docker](https://img.shields.io/docker/v/ovalenzuela/aiproxyguard?label=docker)](https://hub.docker.com/r/ovalenzuela/aiproxyguard)
+[![Tests](https://img.shields.io/badge/tests-165%20passing-brightgreen)](https://github.com/AInvirion/aiproxyguard)
 
 LLM Security Proxy with Prompt Injection Detection.
 
-## Features
+## What It Does
 
-- **Multi-provider routing** - OpenAI, Anthropic, Azure OpenAI, OpenRouter, Ollama, custom endpoints
-- **Attack detection** - Prompt injection, jailbreak, PII/PHI extraction, data exfiltration, harmful content
-- **Policy engine** - Configurable actions (block/warn/log/allow) with client allowlists
-- **Signature library** - 99+ detection patterns across 8 categories
-- **Control plane integration** - Fleet management, signature sync, telemetry
-- **Prometheus metrics** - Request latency, detection rates, signature coverage
-- **Structured JSON logging** - With sensitive data redaction
+AIProxyGuard sits between your application and LLM providers to detect and block malicious inputs before they reach the model. Point your OpenAI/Anthropic SDK at the proxy instead of directly at the provider.
+
+```
+Your App  →  AIProxyGuard  →  OpenAI/Anthropic/etc.
+              ↓
+         Scan & Block
+         Malicious Input
+```
 
 ## Quick Start
 
-```bash
-# Using Docker
-docker run -p 8080:8080 -v /path/to/config.yaml:/etc/aiproxyguard/config.yaml ainvirion/aiproxyguard
+### Docker (Recommended)
 
-# From source
+```bash
+# Pull and run
+docker run -d -p 8080:8080 ovalenzuela/aiproxyguard:latest
+
+# Verify it's running
+curl http://localhost:8080/healthz
+# {"status": "healthy"}
+```
+
+### From Source
+
+```bash
+git clone https://github.com/AInvirion/aiproxyguard.git
+cd aiproxyguard
 pip install .
 aiproxyguard -c config.yaml
 ```
 
-## Configuration
+## Usage
 
-See `config.example.yaml` for a complete configuration example.
-
-### Client Integration
+Point your LLM client to the proxy:
 
 ```python
-# OpenAI SDK
 from openai import OpenAI
+
 client = OpenAI(
     api_key="sk-...",
     base_url="http://localhost:8080/openai/v1"
 )
 
-# Anthropic SDK
-from anthropic import Anthropic
-client = Anthropic(
-    api_key="sk-ant-...",
-    base_url="http://localhost:8080/anthropic/v1"
+# Normal requests work as expected
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello!"}]
 )
+
+# Malicious requests are blocked
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Ignore all previous instructions..."}]
+)
+# Raises: BadRequestError - content_blocked
 ```
 
-Or via environment variables:
+Or set environment variables:
+
 ```bash
 export OPENAI_BASE_URL="http://localhost:8080/openai/v1"
 export ANTHROPIC_BASE_URL="http://localhost:8080/anthropic/v1"
 ```
 
-## Signature Library
+## Features
 
-AIProxyGuard includes detection signatures for common LLM attack patterns:
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Multi-Provider Routing** | Production | OpenAI, Anthropic, OpenRouter, Ollama, custom endpoints |
+| **Request Scanning** | Production | Regex + heuristics detection with configurable timeouts |
+| **Response Scanning** | Production | Detect sensitive data leakage (SSN, credit cards, API keys) |
+| **Policy Engine** | Production | Per-category actions (block/warn/log/allow) with thresholds |
+| **Prometheus Metrics** | Production | Request latency, detection rates, signature coverage |
+| **JSON Logging** | Production | Structured logs with sensitive data redaction |
+| **Health Endpoints** | Production | `/healthz`, `/readyz` for container orchestration |
+| **Control Plane** | Beta | Fleet management, signature sync, telemetry |
+| **TLS Interception** | Beta | MITM proxy for HTTPS inspection |
 
-| Category | Signatures | Tier | Description |
-|----------|------------|------|-------------|
-| `prompt_injection` | 10 | Free | Instruction override, delimiter injection, system prompt extraction |
-| `jailbreak` | 12 | Free | DAN mode, persona exploits, restriction bypass |
-| `pii` | 12 | Free | SSN, credit cards, credentials, email/phone extraction |
-| `child_protection` | 11 | Free | Grooming patterns, CSAM requests, exploitation |
-| `encoding_evasion` | 14 | Free | Base64, hex, unicode, leetspeak filter bypass |
-| `phi` | 13 | Pro | HIPAA-compliant PHI detection (medical records, diagnoses) |
-| `data_exfil` | 12 | Pro | Database dumps, API key extraction, network recon |
-| `harmful_content` | 15 | Pro | Violence, weapons, drugs, hacking, fraud |
+## Detection Categories
 
-### Signature Format
+| Category | Description | Default Action |
+|----------|-------------|----------------|
+| `prompt_injection` | Instruction override, delimiter injection | Block |
+| `jailbreak` | DAN mode, persona exploits, restriction bypass | Block |
+| `encoding_evasion` | Base64, hex, unicode obfuscation detected by heuristics | Warn |
+
+Additional signature categories available via control plane subscription.
+
+## Configuration
+
+Create a `config.yaml`:
 
 ```yaml
-signatures:
-  - id: "PI-001"
-    name: "Ignore instructions"
-    category: "prompt_injection"
-    severity: "high"
-    patterns:
-      - "ignore (all |any )?(previous |prior )?instructions"
-    action: "block"
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+    auth_header: "Authorization"
+  anthropic:
+    url: "https://api.anthropic.com"
+    auth_header: "x-api-key"
+
+scanner:
+  enabled: true
+  regex: true
+  heuristics: true
+
+policy:
+  default_action: "block"
+  categories:
+    prompt_injection:
+      action: "block"
+      threshold: 0.8
+    jailbreak:
+      action: "block"
+      threshold: 0.7
+
+security:
+  failure_mode: "open"        # "open" = allow on error, "closed" = block on error
+  scanner_timeout_ms: 100     # Max time for scanning before timeout
+  max_request_size: 10485760  # 10MB
 ```
 
-### Block Response
+Mount your config:
+
+```bash
+docker run -d -p 8080:8080 \
+  -v $(pwd)/config.yaml:/etc/aiproxyguard/config.yaml \
+  ovalenzuela/aiproxyguard:latest
+```
+
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/openai/*` | Proxy to OpenAI API |
+| `/anthropic/*` | Proxy to Anthropic API |
+| `/healthz` | Liveness probe |
+| `/readyz` | Readiness probe |
+| `/metrics` | Prometheus metrics |
+
+## Block Response Format
+
+When a request is blocked:
 
 ```json
 {
   "error": {
     "type": "content_blocked",
     "code": "prompt_injection_detected",
-    "message": "Request blocked: potential prompt injection detected",
-    "signature_id": "PI-001",
-    "category": "prompt_injection"
+    "message": "Request blocked: potential prompt injection detected"
   }
 }
 ```
 
-## Testing
-
-Run the signature test suite:
-
-```bash
-# Start the proxy
-source .venv/bin/activate
-aiproxyguard -c config.test.yaml &
-
-# Run tests
-python scripts/test_proxy.py
-
-# Test specific category
-python scripts/test_proxy.py --category prompt_injection
-
-# Verbose output
-python scripts/test_proxy.py -v
-```
-
-## Control Plane Integration
-
-AIProxyGuard can connect to the hosted control plane for:
-- Fleet management and monitoring
-- Signature updates and sync
-- Telemetry and analytics
-- Tiered access (free/pro/enterprise)
-
-Configure in `config.yaml`:
-```yaml
-signatures:
-  sync:
-    enabled: true
-    api_url: "https://api.aiproxyguard.com"
-    api_key: "${AIPROXYGUARD_API_KEY}"
-    interval: 300s
-```
-
-### Upload Signatures (Admin)
-
-```bash
-python scripts/upload_signatures.py --email admin@aiproxyguard.com
-```
-
-## Architecture
-
-```
-Client Request
-     │
-     ▼
-┌─────────────┐   ┌────────┐   ┌──────────┐   ┌──────────┐
-│   Router    │──▶│Request │──▶│ Forward  │──▶│ Response │
-│             │   │Scanner │   │          │   │ Scanner  │
-└─────────────┘   └────────┘   └──────────┘   └──────────┘
-                       │
-                       ▼
-                 ┌──────────┐   ┌──────────┐
-                 │  Policy  │   │ Metrics  │
-                 │  Engine  │   │ Exporter │
-                 └──────────┘   └──────────┘
-```
+HTTP status: `400 Bad Request`
 
 ## Metrics
 
-Prometheus metrics available at `/metrics`:
+Prometheus metrics at `/metrics`:
 
 ```
 aiproxyguard_requests_total{upstream, method, status}
+aiproxyguard_request_duration_seconds{upstream, method}
 aiproxyguard_scans_total{scanner, result}
 aiproxyguard_detections_total{category, action, signature_id}
-aiproxyguard_signatures_loaded{tier}
+aiproxyguard_signatures_loaded
 ```
+
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for:
+- Docker / Docker Compose
+- DigitalOcean App Platform
+- Kubernetes (coming soon)
 
 ## Development
 
@@ -177,36 +195,28 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Run tests
-pytest
+# Run tests (165 tests)
+PYTHONPATH=src pytest
 
 # Lint
 ruff check .
 ```
 
-## Security Model
-
-- API keys never logged or sent to control plane
-- Proxy runs in user's trust boundary
-- Signatures cryptographically verified (Ed25519)
-- Manifests prevent rollback attacks
-
-## Contributing
-
-We welcome contributions from the community! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request.
-
 ## Security
 
-If you discover a security vulnerability, please follow our [Security Policy](SECURITY.md).
+- API keys are passed through but never logged
+- Signatures are cryptographically verified (Ed25519)
+- Manifest sequence numbers prevent rollback attacks
+- Report vulnerabilities to security@ainvirion.com
 
 ## License
 
-Apache-2.0 - See [LICENSE](LICENSE) file for details.
+Apache-2.0 - See [LICENSE](LICENSE) file.
 
-Copyright (c) 2025-2026 AInvirion LLC. All Rights Reserved.
+Copyright (c) 2025-2026 AInvirion LLC.
 
 ## Links
 
-- [Control Plane Portal](https://portal.aiproxyguard.com)
-- [Documentation](https://docs.aiproxyguard.com)
+- [Documentation](docs/)
+- [Docker Hub](https://hub.docker.com/r/ovalenzuela/aiproxyguard)
 - [GitHub Issues](https://github.com/AInvirion/aiproxyguard/issues)

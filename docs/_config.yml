@@ -17,5 +17,6 @@ nav:
   - Getting Started: getting-started.md
   - Configuration: configuration.md
   - Deployment: deployment.md
+  - DigitalOcean Guide: digitalocean-guide.md
   - API Reference: api-reference.md
   - Security: security.md

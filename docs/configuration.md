@@ -4,41 +4,245 @@ title: Configuration
 
 # Configuration
 
-AIProxyGuard uses a YAML configuration file.
+AIProxyGuard uses a YAML configuration file. Environment variables are supported with `${VAR}` or `${VAR:-default}` syntax.
 
 ## Minimal Config
 
 ```yaml
 server:
-  host: "0.0.0.0"
   port: 8080
 
 upstreams:
   openai:
     url: "https://api.openai.com"
-    auth_header: "Authorization"
-
-scanner:
-  enabled: true
 ```
 
 ## Full Reference
 
 ```yaml
+# Server settings
 server:
-  host: "0.0.0.0"
-  port: 8080
-  workers: 2
+  host: "0.0.0.0"           # Bind address
+  port: 8080                 # Listen port
+  workers: 2                 # Number of workers (currently unused, reserved)
 
+# Upstream LLM providers
 upstreams:
   openai:
     url: "https://api.openai.com"
-    timeout: 60s
-    auth_header: "Authorization"
+    timeout: 60s                      # Request timeout
+    auth_header: "Authorization"      # Header containing API key
   anthropic:
     url: "https://api.anthropic.com"
     timeout: 60s
     auth_header: "x-api-key"
+  openrouter:
+    url: "https://openrouter.ai/api"
+    timeout: 120s
+    auth_header: "Authorization"
+  ollama:
+    url: "http://localhost:11434"
+    timeout: 300s
+    auth_header: null                 # Ollama doesn't require auth
+
+# Scanner settings
+scanner:
+  enabled: true              # Master switch for all scanning
+  regex: true                # Enable regex pattern matching
+  heuristics: true           # Enable heuristic detection (base64, encoding, etc.)
+  ml_classifier: false       # ML classifier (not yet implemented)
+  response:                  # Response scanning settings
+    enabled: false           # Scan responses for sensitive data
+    mode: "buffered"         # "passthrough", "buffered", or "full"
+    buffer_size: 1024        # Chars to buffer before scanning (buffered mode)
+    categories: []           # Categories to scan for (empty = all)
+
+# Policy engine
+policy:
+  default_action: "block"    # Default action: "allow", "log", "warn", "block"
+  categories:
+    prompt_injection:
+      action: "block"
+      threshold: 0.8         # Confidence threshold (0.0-1.0)
+    jailbreak:
+      action: "block"
+      threshold: 0.7
+    encoding_evasion:
+      action: "warn"
+      threshold: 0.6
+  allowlists:                # Bypass scanning for specific clients
+    - client_id: "internal-service-*"
+      categories: ["prompt_injection"]
+
+# Signature location
+signatures:
+  path: "/app/signatures"    # Path to signature YAML files
+
+# Security settings
+security:
+  failure_mode: "open"       # "open" = allow on error, "closed" = block on error
+  scanner_timeout_ms: 100    # Max scanner execution time before timeout
+  upstream_timeout_s: 60     # Upstream request timeout
+  max_request_size: 10485760   # 10 MB max request body
+  max_response_size: 52428800  # 50 MB max response body
+  expose_details: false      # Never expose signature patterns to clients
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  path: "/metrics"
+
+# Structured logging
+logging:
+  level: "info"              # "debug", "info", "warning", "error"
+  format: "json"             # "json" or "text"
+  redact_keys: true          # Redact API keys in logs
+
+# Client identity resolution
+identity:
+  method: "ip"               # "ip", "header", "token", "mtls"
+  header_name: "X-Client-ID" # Header to extract client ID from
+  fallback_header: null      # Fallback header if primary is missing
+  trust_xff: false           # Trust X-Forwarded-For for IP resolution
+  hash_token: true           # Hash tokens for privacy
+
+# Control plane (optional)
+control_plane:
+  enabled: false
+  url: "${CONTROL_PLANE_URL:-https://api.aiproxyguard.com}"
+  api_key: "${CONTROL_PLANE_API_KEY}"
+  heartbeat_interval: 60
+  sync_signatures: true
+  report_telemetry: true
+
+# TLS interception (optional, advanced)
+tls:
+  enabled: false
+  ca_cert: "/etc/aiproxyguard/ca.crt"
+  ca_key: "/etc/aiproxyguard/ca.key"
+  cert_cache_size: 1000
+  cert_validity_days: 30
+```
+
+## Environment Variables
+
+Use `${VAR}` or `${VAR:-default}` syntax:
+
+```yaml
+upstreams:
+  openai:
+    url: "${OPENAI_BASE_URL:-https://api.openai.com}"
+
+control_plane:
+  api_key: "${CONTROL_PLANE_API_KEY}"
+```
+
+## Policy Actions
+
+| Action | Behavior |
+|--------|----------|
+| `allow` | Pass through without scanning |
+| `log` | Scan and log detections, allow request |
+| `warn` | Scan and log detections with warning, allow request |
+| `block` | Scan and block if detection confidence >= threshold |
+
+## Failure Modes
+
+| Mode | Behavior |
+|------|----------|
+| `open` | On scanner error/timeout, allow the request |
+| `closed` | On scanner error/timeout, block the request |
+
+Use `open` for availability-focused deployments, `closed` for security-focused.
+
+## Response Scanning Modes
+
+| Mode | Behavior |
+|------|----------|
+| `passthrough` | Forward response chunks immediately, scan asynchronously |
+| `buffered` | Buffer N chars before scanning, then stream |
+| `full` | Buffer entire response, scan, then return |
+
+## Docker Volume Mounts
+
+```bash
+docker run -d -p 8080:8080 \
+  -v $(pwd)/config.yaml:/etc/aiproxyguard/config.yaml \
+  -v $(pwd)/signatures:/app/signatures \
+  ovalenzuela/aiproxyguard:latest
+```
+
+## Example Configs
+
+### Minimal (OpenAI only)
+
+```yaml
+server:
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+scanner:
+  enabled: true
+```
+
+### Production (Multiple providers, strict policy)
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+    auth_header: "Authorization"
+  anthropic:
+    url: "https://api.anthropic.com"
+    auth_header: "x-api-key"
+
+scanner:
+  enabled: true
+  regex: true
+  heuristics: true
+  response:
+    enabled: true
+    mode: "buffered"
+
+policy:
+  default_action: "block"
+  categories:
+    prompt_injection:
+      action: "block"
+      threshold: 0.7
+    jailbreak:
+      action: "block"
+      threshold: 0.7
+
+security:
+  failure_mode: "closed"
+  scanner_timeout_ms: 50
+  max_request_size: 1048576  # 1 MB
+
+metrics:
+  enabled: true
+
+logging:
+  level: "info"
+  format: "json"
+  redact_keys: true
+```
+
+### Local Development (Ollama)
+
+```yaml
+server:
+  port: 8080
+
+upstreams:
+  ollama:
+    url: "http://localhost:11434"
+    timeout: 300s
 
 scanner:
   enabled: true
@@ -46,32 +250,9 @@ scanner:
   heuristics: true
 
 policy:
-  default_action: "block"
-  categories:
-    prompt_injection:
-      action: "block"
-    jailbreak:
-      action: "block"
-
-security:
-  max_request_size: 10485760
-  max_response_size: 52428800
-
-metrics:
-  enabled: true
-  path: "/metrics"
+  default_action: "warn"  # Log but don't block during development
 
 logging:
-  level: "info"
-  format: "json"
-```
-
-## Environment Variables
-
-Config values support environment variable substitution:
-
-```yaml
-upstreams:
-  openai:
-    url: "${OPENAI_BASE_URL:-https://api.openai.com}"
+  level: "debug"
+  format: "text"
 ```
