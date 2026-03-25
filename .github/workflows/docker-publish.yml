@@ -40,7 +40,7 @@ jobs:
         env:
           SIGNATURES_DIR: signatures
           TIER: free
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SIGNATURES_GITHUB_TOKEN }}
 
       - name: Verify signatures fetched
         run: |
