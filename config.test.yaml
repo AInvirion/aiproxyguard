@@ -43,9 +43,9 @@ logging:
 
 # Control plane integration
 control_plane:
-  enabled: true
-  url: "https://aiproxyguard-qb247.ondigitalocean.app"
-  api_key: "apg_3ec7f3883992c3471e7341cf4a642c5125868099134266ddbba9f72ed34271f4"
+  enabled: false
+  url: "${CONTROL_PLANE_URL:-https://your-control-plane.example.com}"
+  api_key: "${CONTROL_PLANE_API_KEY}"
   heartbeat_interval: 30
   sync_signatures: true
   report_telemetry: true
