@@ -395,6 +395,69 @@ class TLSInterceptProxy:
                 duration = time.monotonic() - start_time
                 self._metrics.record_request(upstream_host, method, resp.status, duration)
 
+                # Response scanning (if enabled)
+                response_scanner = self._scanner.response_scanner
+                if response_scanner and response_scanner.enabled and response_body:
+                    try:
+                        response_text = response_body.decode("utf-8")
+                        scan_start = time.monotonic()
+                        response_scan_result = await asyncio.to_thread(
+                            response_scanner.scan, response_text
+                        )
+                        scan_duration = time.monotonic() - scan_start
+                        self._metrics.record_scan(
+                            "response",
+                            "block" if response_scan_result.blocked else "allow",
+                            scan_duration,
+                        )
+
+                        if response_scan_result.blocked:
+                            self._metrics.record_detection(
+                                response_scan_result.category or "unknown",
+                                "block",
+                                response_scan_result.signature_id,
+                            )
+                            logger.warning(
+                                "Response blocked",
+                                extra={
+                                    "category": response_scan_result.category,
+                                    "signature_id": response_scan_result.signature_id,
+                                    "client_id": client_id,
+                                },
+                            )
+                            await self._send_json_response(
+                                writer,
+                                502,
+                                {
+                                    "error": {
+                                        "type": "response_blocked",
+                                        "code": f"{response_scan_result.category}_detected",
+                                        "message": "Response blocked: sensitive content detected",
+                                    }
+                                },
+                            )
+                            return
+
+                        if response_scan_result.has_detections:
+                            self._metrics.record_detection(
+                                response_scan_result.category or "unknown",
+                                "warn",
+                                response_scan_result.signature_id,
+                            )
+                            logger.warning(
+                                "Response detection (non-blocking)",
+                                extra={
+                                    "category": response_scan_result.category,
+                                    "signature_id": response_scan_result.signature_id,
+                                    "client_id": client_id,
+                                },
+                            )
+                    except UnicodeDecodeError:
+                        # Binary response, skip scanning
+                        pass
+                    except Exception as e:
+                        logger.error(f"Response scanner error: {e}")
+
                 # Send response back to client
                 status_line = f"HTTP/1.1 {resp.status} {resp.reason}\r\n"
                 writer.write(status_line.encode())
