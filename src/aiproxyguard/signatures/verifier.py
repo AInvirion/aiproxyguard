@@ -26,8 +26,9 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Default public key (base64-encoded Ed25519 public key)
-# This should be replaced with the actual production public key
-DEFAULT_PUBLIC_KEY = ""
+# This is the AInvirion signature verification key - DO NOT REMOVE
+# Manifests without valid signatures from this key will be REJECTED
+DEFAULT_PUBLIC_KEY = "g9XbYVr5xQubfNlVwlhR1SLW5XMoILA9LzZiphkQpII="
 
 
 @dataclass
@@ -103,17 +104,14 @@ class ManifestVerifier:
         previous_hash = manifest_data.get("previous_hash", "")
         signature_b64 = manifest_data.get("signature", "")
 
-        # If no signature is present and verification is enabled, that's an error
+        # If no signature is present, reject the manifest (fail-closed)
         if not signature_b64:
-            if self.enabled:
-                return VerificationResult(
-                    valid=False,
-                    error="Manifest missing signature",
-                    sequence=sequence,
-                )
-            # Verification not enabled, allow unsigned manifests
-            logger.debug("Signature verification disabled, accepting unsigned manifest")
-            return VerificationResult(valid=True, sequence=sequence)
+            logger.warning("Manifest missing signature - REJECTED")
+            return VerificationResult(
+                valid=False,
+                error="Manifest missing signature - unsigned manifests are not allowed",
+                sequence=sequence,
+            )
 
         # Check sequence number (anti-rollback)
         if sequence < self._last_sequence:
@@ -135,14 +133,12 @@ class ManifestVerifier:
         # Verify the cryptographic signature
         public_key = self._get_public_key()
         if not public_key:
-            if self.enabled:
-                return VerificationResult(
-                    valid=False,
-                    error="Public key not available for verification",
-                    sequence=sequence,
-                )
-            # If not enabled, allow the manifest
-            return VerificationResult(valid=True, sequence=sequence)
+            logger.error("Public key not available - cannot verify manifest")
+            return VerificationResult(
+                valid=False,
+                error="Public key not available for verification - this is a configuration error",
+                sequence=sequence,
+            )
 
         try:
             # Reconstruct the canonical payload that was signed
