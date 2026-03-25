@@ -221,6 +221,11 @@ def load_config(path: str) -> Config:
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
+    if raw is None:
+        raise ValueError(f"Config file is empty: {path}")
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config file must be a YAML mapping, got {type(raw).__name__}: {path}")
+
     data = _process_value(raw)
 
     server_data = data.get("server", {})
