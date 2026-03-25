@@ -1,0 +1,21 @@
+# Jekyll configuration for GitHub Pages
+title: AIProxyGuard
+description: LLM Security Proxy with Prompt Injection Detection
+baseurl: "/aiproxyguard"
+url: "https://ainvirion.github.io"
+
+# Theme
+remote_theme: carlosperate/jekyll-theme-rtd
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+
+# Navigation (sidebar)
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Configuration: configuration.md
+  - Deployment: deployment.md
+  - API Reference: api-reference.md
+  - Security: security.md
