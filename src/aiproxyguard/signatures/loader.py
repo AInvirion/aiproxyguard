@@ -20,9 +20,13 @@ from aiproxyguard.signatures.models import Signature, SignatureSet
 
 
 def _parse_signature(data: dict[str, Any]) -> Signature:
+    # Support both 'pattern' (single string) and 'patterns' (list) formats
+    patterns = data.get("patterns", [])
+    if not patterns and "pattern" in data:
+        patterns = [data["pattern"]]
     return Signature(
         id=data["id"], name=data["name"], category=data["category"],
-        severity=data["severity"], patterns=data["patterns"], action=data["action"],
+        severity=data["severity"], patterns=patterns, action=data["action"],
         scan_target=data.get("scan_target", "request"),
     )
 
