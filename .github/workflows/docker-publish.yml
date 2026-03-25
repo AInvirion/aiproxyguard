@@ -11,7 +11,8 @@ env:
   REGISTRY_DOCKERHUB: docker.io
   REGISTRY_GHCR: ghcr.io
   IMAGE_NAME_DOCKERHUB: ovalenzuela/aiproxyguard
-  IMAGE_NAME_GHCR: ${{ github.repository }}
+  # Must be lowercase for Docker - github.repository may have uppercase
+  IMAGE_NAME_GHCR: ainvirion/aiproxyguard
 
 jobs:
   build-and-push:
@@ -111,7 +112,7 @@ jobs:
       matrix:
         registry:
           - docker.io/ovalenzuela/aiproxyguard
-          - ghcr.io/${{ github.repository }}
+          - ghcr.io/ainvirion/aiproxyguard
 
     steps:
       - name: Pull and test image
