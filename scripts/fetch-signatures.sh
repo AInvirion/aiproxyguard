@@ -6,6 +6,8 @@
 # 2. Downloads the free tier bundle
 # 3. Verifies the Ed25519 signature
 # 4. Extracts signatures to the signatures/ directory
+#
+# Requires: gh CLI (authenticated), jq, python3 with cryptography
 
 set -euo pipefail
 
@@ -16,48 +18,53 @@ TIER="${TIER:-free}"
 
 echo "=== Fetching signatures from $REPO ==="
 
-# Get latest release
-echo "Fetching latest release..."
-RELEASE_JSON=$(curl -sL "https://api.github.com/repos/$REPO/releases/latest")
+# Check for gh CLI
+if ! command -v gh &> /dev/null; then
+    echo "ERROR: gh CLI not found. Install from https://cli.github.com/"
+    exit 1
+fi
 
-if echo "$RELEASE_JSON" | grep -q '"message": "Not Found"'; then
+# Get latest release tag
+echo "Fetching latest release..."
+VERSION=$(gh release view --repo "$REPO" --json tagName -q '.tagName' 2>/dev/null || echo "")
+
+if [ -z "$VERSION" ]; then
     echo "ERROR: No releases found for $REPO"
     echo "Keeping existing signatures in $SIGNATURES_DIR"
     exit 0
 fi
 
-VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
 echo "Latest release: $VERSION"
-
-# Find the free tier bundle asset
-BUNDLE_NAME="${TIER}-${VERSION}.tar.gz"
-BUNDLE_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$BUNDLE_NAME\") | .browser_download_url")
-SIG_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"${BUNDLE_NAME}.sig\") | .browser_download_url")
-
-if [ -z "$BUNDLE_URL" ] || [ "$BUNDLE_URL" = "null" ]; then
-    echo "ERROR: Bundle $BUNDLE_NAME not found in release"
-    echo "Available assets:"
-    echo "$RELEASE_JSON" | jq -r '.assets[].name'
-    echo "Keeping existing signatures in $SIGNATURES_DIR"
-    exit 0
-fi
 
 # Create temp directory
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
-# Download bundle
+# Download bundle and signature using gh CLI
+BUNDLE_NAME="${TIER}-${VERSION}.tar.gz"
 echo "Downloading $BUNDLE_NAME..."
-curl -sL "$BUNDLE_URL" -o "$TMPDIR/bundle.tar.gz"
 
-# Download signature if available
-if [ -n "$SIG_URL" ] && [ "$SIG_URL" != "null" ]; then
-    echo "Downloading signature..."
-    curl -sL "$SIG_URL" -o "$TMPDIR/bundle.sig"
+gh release download "$VERSION" \
+    --repo "$REPO" \
+    --pattern "$BUNDLE_NAME" \
+    --pattern "${BUNDLE_NAME}.sig" \
+    --dir "$TMPDIR" 2>/dev/null || {
+    echo "ERROR: Failed to download $BUNDLE_NAME from release $VERSION"
+    echo "Keeping existing signatures in $SIGNATURES_DIR"
+    exit 0
+}
 
-    # Verify signature using Python (cryptography library)
+# Check if files were downloaded
+if [ ! -f "$TMPDIR/$BUNDLE_NAME" ]; then
+    echo "ERROR: Bundle $BUNDLE_NAME not found in release"
+    echo "Keeping existing signatures in $SIGNATURES_DIR"
+    exit 0
+fi
+
+# Verify signature if available
+if [ -f "$TMPDIR/${BUNDLE_NAME}.sig" ]; then
     echo "Verifying signature..."
-    python3 - "$TMPDIR/bundle.tar.gz" "$TMPDIR/bundle.sig" "$PUBLIC_KEY" << 'PYEOF'
+    python3 - "$TMPDIR/$BUNDLE_NAME" "$TMPDIR/${BUNDLE_NAME}.sig" "$PUBLIC_KEY" << 'PYEOF'
 import sys
 import base64
 
@@ -102,19 +109,25 @@ mkdir -p "$SIGNATURES_DIR"
 # Backup existing signatures
 if [ -d "$SIGNATURES_DIR" ] && [ "$(ls -A $SIGNATURES_DIR 2>/dev/null)" ]; then
     echo "Backing up existing signatures..."
-    mv "$SIGNATURES_DIR" "${SIGNATURES_DIR}.bak.$$"
+    BACKUP_DIR="${SIGNATURES_DIR}.bak.$$"
+    mv "$SIGNATURES_DIR" "$BACKUP_DIR"
     mkdir -p "$SIGNATURES_DIR"
 fi
 
 # Extract
-tar -xzf "$TMPDIR/bundle.tar.gz" -C "$SIGNATURES_DIR"
+tar -xzf "$TMPDIR/$BUNDLE_NAME" -C "$SIGNATURES_DIR"
 
 # Count signatures
-YAML_COUNT=$(find "$SIGNATURES_DIR" -name "*.yaml" -o -name "*.yml" | wc -l | tr -d ' ')
+YAML_COUNT=$(find "$SIGNATURES_DIR" -name "*.yaml" -o -name "*.yml" 2>/dev/null | wc -l | tr -d ' ')
 echo "Extracted $YAML_COUNT signature files"
 
 # Create version marker
 echo "$VERSION" > "$SIGNATURES_DIR/.version"
 echo "$TIER" > "$SIGNATURES_DIR/.tier"
+
+# Clean up backup if everything succeeded
+if [ -n "${BACKUP_DIR:-}" ] && [ -d "$BACKUP_DIR" ]; then
+    rm -rf "$BACKUP_DIR"
+fi
 
 echo "=== Signatures updated to $VERSION ($TIER tier) ==="
