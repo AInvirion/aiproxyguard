@@ -1,0 +1,39 @@
+# DigitalOcean App Platform Specification
+# Deploy with: doctl apps create --spec do-app.yaml
+# Update with: doctl apps update <app-id> --spec do-app.yaml
+
+name: aiproxyguard
+region: nyc
+
+services:
+  - name: proxy
+    image:
+      registry_type: DOCKER_HUB
+      registry: ovalenzuela
+      repository: aiproxyguard
+      tag: latest
+    instance_count: 1
+    instance_size_slug: basic-xxs  # $5/mo - 512MB RAM, 1 vCPU
+    http_port: 8080
+    health_check:
+      http_path: /healthz
+      initial_delay_seconds: 10
+      period_seconds: 30
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+    routes:
+      - path: /
+
+# Uncomment for production with alerts and custom domain:
+# alerts:
+#   - rule: DEPLOYMENT_FAILED
+#   - rule: DOMAIN_FAILED
+#   - rule: HTTP_RESPONSE_ERRORS_RATE
+#     value: 5
+#     window: FIVE_MINUTES
+#     operator: GREATER_THAN
+
+# domains:
+#   - domain: proxy.yourdomain.com
+#     type: PRIMARY
