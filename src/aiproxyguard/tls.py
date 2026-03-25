@@ -24,6 +24,7 @@ import hashlib
 import os
 import ssl
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -55,11 +56,14 @@ class TLSConfig:
 
 
 class CertificateCache:
-    """Thread-safe LRU cache for generated certificates."""
+    """Thread-safe LRU cache for generated certificates.
+
+    Uses OrderedDict for O(1) LRU operations instead of O(n) list operations.
+    """
 
     def __init__(self, max_size: int = 1000) -> None:
-        self._cache: dict[str, tuple[bytes, bytes]] = {}
-        self._order: list[str] = []
+        # OrderedDict maintains insertion order and provides O(1) move_to_end/popitem
+        self._cache: OrderedDict[str, tuple[bytes, bytes]] = OrderedDict()
         self._max_size = max_size
         self._lock = threading.Lock()
 
@@ -67,9 +71,8 @@ class CertificateCache:
         """Get cached certificate and key for hostname."""
         with self._lock:
             if hostname in self._cache:
-                # Move to end (most recently used)
-                self._order.remove(hostname)
-                self._order.append(hostname)
+                # Move to end (most recently used) - O(1)
+                self._cache.move_to_end(hostname)
                 return self._cache[hostname]
         return None
 
@@ -77,20 +80,19 @@ class CertificateCache:
         """Cache certificate and key for hostname."""
         with self._lock:
             if hostname in self._cache:
-                self._order.remove(hostname)
-            elif len(self._cache) >= self._max_size:
-                # Evict least recently used
-                oldest = self._order.pop(0)
-                del self._cache[oldest]
-
-            self._cache[hostname] = (cert_pem, key_pem)
-            self._order.append(hostname)
+                # Update existing and move to end - O(1)
+                self._cache.move_to_end(hostname)
+                self._cache[hostname] = (cert_pem, key_pem)
+            else:
+                if len(self._cache) >= self._max_size:
+                    # Evict least recently used (first item) - O(1)
+                    self._cache.popitem(last=False)
+                self._cache[hostname] = (cert_pem, key_pem)
 
     def clear(self) -> None:
         """Clear the cache."""
         with self._lock:
             self._cache.clear()
-            self._order.clear()
 
 
 class CertificateAuthority:
