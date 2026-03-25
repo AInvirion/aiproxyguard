@@ -42,6 +42,14 @@ jobs:
           TIER: free
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify signatures fetched
+        run: |
+          echo "Signatures directory contents:"
+          ls -la signatures/
+          cat signatures/.version
+          echo "Signature count:"
+          grep -c "id:" signatures/*.yaml || echo "No signatures found"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -82,8 +90,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}
 
       - name: Update Docker Hub description
         uses: peter-evans/dockerhub-description@v4
