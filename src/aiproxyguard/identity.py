@@ -17,7 +17,10 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class IdentityResolver:
@@ -47,6 +50,13 @@ class IdentityResolver:
         if method not in VALID_METHODS:
             raise ValueError(
                 f"Invalid method: {method}. Must be one of: {VALID_METHODS}"
+            )
+
+        if method == "header":
+            logger.warning(
+                "Identity method 'header' is INSECURE: client identity can be spoofed "
+                "via HTTP headers. Only use behind an authenticating reverse proxy. "
+                "Consider using method 'ip' (default) or 'token' for secure identity."
             )
 
         self.method = method

@@ -356,7 +356,13 @@ def create_app(config: Config) -> web.Application:
         },
         allowlists=config.policy.allowlists,
     )
-    app["identity"] = IdentityResolver(method="header")
+    app["identity"] = IdentityResolver(
+        method=config.identity.method,
+        header_name=config.identity.header_name,
+        fallback_header=config.identity.fallback_header,
+        trust_xff=config.identity.trust_xff,
+        hash_token=config.identity.hash_token,
+    )
     app["metrics"] = MetricsCollector()
 
     # Set signature count metric
@@ -441,7 +447,13 @@ async def _run_tls_server(config: Config) -> None:
         },
         allowlists=config.policy.allowlists,
     )
-    identity = IdentityResolver(method="header")
+    identity = IdentityResolver(
+        method=config.identity.method,
+        header_name=config.identity.header_name,
+        fallback_header=config.identity.fallback_header,
+        trust_xff=config.identity.trust_xff,
+        hash_token=config.identity.hash_token,
+    )
     metrics = MetricsCollector()
     metrics.set_signatures_loaded("free", len(signatures.signatures))
 

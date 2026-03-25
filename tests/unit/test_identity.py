@@ -14,6 +14,7 @@
 
 """Tests for client identity resolution."""
 
+import logging
 import pytest
 
 from aiproxyguard.identity import IdentityResolver
@@ -93,3 +94,18 @@ class TestIdentityResolver:
         identity = resolver.resolve(headers, remote_addr="10.0.0.1")
 
         assert identity == "203.0.113.50"  # First IP from XFF
+
+    def test_header_method_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Header method logs security warning."""
+        with caplog.at_level(logging.WARNING):
+            IdentityResolver(method="header")
+
+        assert any("INSECURE" in record.message for record in caplog.records)
+        assert any("spoofed" in record.message for record in caplog.records)
+
+    def test_ip_method_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """IP method does not log warning."""
+        with caplog.at_level(logging.WARNING):
+            IdentityResolver(method="ip")
+
+        assert not any("INSECURE" in record.message for record in caplog.records)

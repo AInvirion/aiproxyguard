@@ -98,3 +98,39 @@ upstreams:
 """)
         config = load_config(str(config_file))
         assert config.upstreams["custom"].auth_header == "X-Custom-Token"
+
+    def test_identity_defaults_to_ip(self, tmp_path: Path) -> None:
+        """Identity method defaults to 'ip' (secure default)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+""")
+        config = load_config(str(config_file))
+        assert config.identity.method == "ip"
+        assert config.identity.header_name == "X-Client-ID"
+        assert config.identity.trust_xff is False
+
+    def test_identity_custom_config(self, tmp_path: Path) -> None:
+        """Identity configuration is parsed correctly."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+identity:
+  method: "token"
+  header_name: "X-API-Key"
+  trust_xff: true
+  hash_token: false
+""")
+        config = load_config(str(config_file))
+        assert config.identity.method == "token"
+        assert config.identity.header_name == "X-API-Key"
+        assert config.identity.trust_xff is True
+        assert config.identity.hash_token is False

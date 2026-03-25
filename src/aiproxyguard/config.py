@@ -139,6 +139,17 @@ class TLSConfig:
 
 
 @dataclass
+class IdentityConfig:
+    """Client identity resolution configuration."""
+
+    method: str = "ip"  # ip, header, token, mtls
+    header_name: str = "X-Client-ID"
+    fallback_header: str | None = None
+    trust_xff: bool = False  # Trust X-Forwarded-For for IP resolution
+    hash_token: bool = True  # Hash tokens for privacy
+
+
+@dataclass
 class Config:
     """Root configuration."""
 
@@ -152,6 +163,7 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     control_plane: ControlPlaneConfig = field(default_factory=ControlPlaneConfig)
     tls: TLSConfig = field(default_factory=TLSConfig)
+    identity: IdentityConfig = field(default_factory=IdentityConfig)
 
 
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
@@ -300,6 +312,15 @@ def load_config(path: str) -> Config:
         cert_validity_days=tls_data.get("cert_validity_days", 30),
     )
 
+    identity_data = data.get("identity", {})
+    identity = IdentityConfig(
+        method=identity_data.get("method", "ip"),
+        header_name=identity_data.get("header_name", "X-Client-ID"),
+        fallback_header=identity_data.get("fallback_header"),
+        trust_xff=identity_data.get("trust_xff", False),
+        hash_token=identity_data.get("hash_token", True),
+    )
+
     return Config(
         server=server,
         upstreams=upstreams,
@@ -311,4 +332,5 @@ def load_config(path: str) -> Config:
         logging=logging,
         control_plane=control_plane,
         tls=tls,
+        identity=identity,
     )
