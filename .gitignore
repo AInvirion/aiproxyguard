@@ -20,7 +20,6 @@ htmlcov/
 .coverage
 .coverage.*
 
-# Internal planning docs (not for public repo)
 docs/superpowers/
 
 # Dependencies
@@ -103,4 +102,3 @@ temp/
 
 # Signatures (fetched at build time) - only top-level directory
 /signatures/
-docs/
