@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import annotations
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -82,11 +83,22 @@ class ScannerPipeline:
             matches=[m[3] for m in all_matches]
         )
 
+    async def scan_async(self, text: str) -> ScanResult:
+        """Async version that runs CPU-bound scanning in a thread pool.
+
+        Prevents blocking the event loop during regex matching.
+        """
+        return await asyncio.to_thread(self.scan, text)
+
     def scan_response(self, text: str) -> ResponseScanResult:
         """Scan response content for sensitive data leakage."""
         if self._response_scanner is None:
             return ResponseScanResult(scanned_length=len(text))
         return self._response_scanner.scan(text)
+
+    async def scan_response_async(self, text: str) -> ResponseScanResult:
+        """Async version that runs CPU-bound response scanning in a thread pool."""
+        return await asyncio.to_thread(self.scan_response, text)
 
     @property
     def response_scanner(self) -> ResponseScanner | None:

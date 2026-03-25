@@ -160,7 +160,8 @@ async def proxy_handler(request: web.Request) -> web.Response:
         scan_start = time.monotonic()
         try:
             text = body.decode("utf-8")
-            scan_result = scanner.scan(text)
+            # Run CPU-bound scanning in thread pool to avoid blocking event loop
+            scan_result = await scanner.scan_async(text)
             scan_duration = time.monotonic() - scan_start
             metrics.record_scan("pipeline", scan_result.action, scan_duration)
 
@@ -302,7 +303,8 @@ async def proxy_handler(request: web.Request) -> web.Response:
                 scan_start = time.monotonic()
                 try:
                     response_text = response_body.decode("utf-8")
-                    response_scan_result = response_scanner.scan(response_text)
+                    # Run CPU-bound scanning in thread pool to avoid blocking event loop
+                    response_scan_result = await asyncio.to_thread(response_scanner.scan, response_text)
                     scan_duration = time.monotonic() - scan_start
                     metrics.record_scan("response", "block" if response_scan_result.blocked else "allow", scan_duration)
 
