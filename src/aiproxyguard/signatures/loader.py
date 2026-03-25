@@ -24,8 +24,10 @@ def _parse_signature(data: dict[str, Any]) -> Signature:
     patterns = data.get("patterns", [])
     if not patterns and "pattern" in data:
         patterns = [data["pattern"]]
+    # Category defaults to 'unknown' if not provided (backwards compatibility)
+    category = data.get("category", "unknown")
     return Signature(
-        id=data["id"], name=data["name"], category=data["category"],
+        id=data["id"], name=data["name"], category=category,
         severity=data["severity"], patterns=patterns, action=data["action"],
         scan_target=data.get("scan_target", "request"),
     )
