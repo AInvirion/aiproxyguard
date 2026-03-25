@@ -1,0 +1,52 @@
+# Default Docker configuration for aiproxyguard
+# Mount a custom config at /etc/aiproxyguard/config.yaml to override
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 2
+
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+    timeout: 60s
+    auth_header: "Authorization"
+  anthropic:
+    url: "https://api.anthropic.com"
+    timeout: 60s
+    auth_header: "x-api-key"
+
+scanner:
+  enabled: true
+  regex: true
+  heuristics: true
+
+policy:
+  default_action: "block"
+  categories:
+    prompt_injection:
+      action: "block"
+      threshold: 0.8
+    jailbreak:
+      action: "block"
+      threshold: 0.7
+
+signatures:
+  path: "/app/signatures"
+
+security:
+  failure_mode: "open"
+  scanner_timeout_ms: 100
+  max_request_size: 10485760
+  max_response_size: 52428800
+
+metrics:
+  enabled: true
+  path: "/metrics"
+
+logging:
+  level: "info"
+  format: "json"
+
+control_plane:
+  enabled: false

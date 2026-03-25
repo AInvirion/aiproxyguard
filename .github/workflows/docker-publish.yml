@@ -137,5 +137,9 @@ jobs:
           docker pull ${{ matrix.registry }}:latest
           docker run --rm -d --name verify-test -p 8080:8080 ${{ matrix.registry }}:latest
           sleep 5
+          # Show container status and logs for debugging
+          docker ps -a
+          docker logs verify-test || true
+          # Test health endpoint
           curl -f http://localhost:8080/healthz
           docker stop verify-test

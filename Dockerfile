@@ -27,8 +27,9 @@ COPY --from=builder /usr/local/bin/aiproxyguard /usr/local/bin/aiproxyguard
 COPY src/ ./src/
 COPY signatures/ ./signatures/
 
-# Create config directory
+# Create config directory and copy default config
 RUN mkdir -p /etc/aiproxyguard
+COPY config.docker.yaml /etc/aiproxyguard/config.yaml
 
 # Set default signature path
 ENV AIPROXYGUARD_SIGNATURES_PATH=/app/signatures
