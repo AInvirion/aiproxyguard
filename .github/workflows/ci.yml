@@ -1,0 +1,43 @@
+name: Template Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Validate Template Files
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check required files exist
+      run: |
+        test -f LICENSE
+        test -f README.md
+        test -f CONTRIBUTING.md
+        test -f SECURITY.md
+        test -f CODE_OF_CONDUCT.md
+        test -f .clabot
+        echo "All required template files present"
+
+    - name: Validate markdown files
+      uses: DavidAnson/markdownlint-cli2-action@v22
+      with:
+        globs: '**/*.md'
+        config: |
+          {
+            "default": true,
+            "MD013": false,
+            "MD033": false,
+            "MD041": false
+          }
+      continue-on-error: true
+
+    - name: Check for placeholder text
+      run: |
+        echo "Note: Remember to replace [Project Name] and other placeholders when using this template"
