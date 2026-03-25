@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from aiproxyguard.scanner.decoder import decode_base64, decode_url
+from aiproxyguard.scanner.decoder import count_base64_segments, has_url_encoding
 
 
 @dataclass
@@ -51,17 +51,16 @@ class HeuristicsScanner:
                 details=f"Length {len(text)} > {self.max_length}",
             ))
 
-        b64_decoded = decode_base64(text)
-        if b64_decoded:
+        b64_count = count_base64_segments(text)
+        if b64_count > 0:
             matches.append(HeuristicMatch(
                 heuristic="base64_encoding",
                 description="Base64 encoded content detected",
                 confidence=0.8,
-                details=f"Found {len(b64_decoded)} encoded segments",
+                details=f"Found {b64_count} encoded segments",
             ))
 
-        url_decoded = decode_url(text)
-        if url_decoded:
+        if has_url_encoding(text):
             matches.append(HeuristicMatch(
                 heuristic="url_encoding",
                 description="URL encoded content detected",

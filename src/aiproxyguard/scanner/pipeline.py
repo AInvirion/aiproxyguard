@@ -51,36 +51,46 @@ class ScannerPipeline:
     def scan(self, text: str) -> ScanResult:
         if not self._config.enabled:
             return ScanResult(action="allow")
-        # Format: (action, category, signature_id, internal_details, confidence)
-        # internal_details are for logging only, never exposed to clients
-        all_matches: list[tuple[str, str, str | None, str, float]] = []
+
+        action_priority = {"allow": 0, "log": 1, "warn": 2, "block": 3}
+        # Track best match in single pass - O(n) instead of O(n log n)
+        best: tuple[str, str, str | None, str, float] | None = None
+        best_score: tuple[int, float] = (-1, -1.0)
+        all_details: list[str] = []
+
         if self._regex_scanner:
             for match in self._regex_scanner.scan(text):
-                # Store pattern internally for server-side logging only
                 internal_detail = f"pattern:{match.matched_pattern}"
-                all_matches.append((
-                    match.signature.action,
-                    match.signature.category,
-                    match.signature.id,
-                    internal_detail,
-                    0.9
-                ))
+                all_details.append(internal_detail)
+                score = (action_priority.get(match.signature.action, 0), 0.9)
+                if score > best_score:
+                    best_score = score
+                    best = (
+                        match.signature.action,
+                        match.signature.category,
+                        match.signature.id,
+                        internal_detail,
+                        0.9,
+                    )
+
         if self._heuristics_scanner:
             for match in self._heuristics_scanner.scan(text):
-                all_matches.append(("warn", "encoding_evasion", None, match.description, match.confidence))
-        if not all_matches:
+                all_details.append(match.description)
+                score = (action_priority.get("warn", 0), match.confidence)
+                if score > best_score:
+                    best_score = score
+                    best = ("warn", "encoding_evasion", None, match.description, match.confidence)
+
+        if best is None:
             return ScanResult(action="allow")
-        action_priority = {"allow": 0, "log": 1, "warn": 2, "block": 3}
-        sorted_matches = sorted(all_matches, key=lambda m: (action_priority.get(m[0], 0), m[4]), reverse=True)
-        top = sorted_matches[0]
-        # details field contains internal info for logging - never expose to clients
+
         return ScanResult(
-            action=top[0],
-            category=top[1],
-            signature_id=top[2],
-            confidence=top[4],
-            details=top[3],
-            matches=[m[3] for m in all_matches]
+            action=best[0],
+            category=best[1],
+            signature_id=best[2],
+            confidence=best[4],
+            details=best[3],
+            matches=all_details,
         )
 
     async def scan_async(self, text: str) -> ScanResult:
