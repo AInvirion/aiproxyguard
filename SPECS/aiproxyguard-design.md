@@ -1,7 +1,7 @@
 # AIProxyGuard Design Specification
 
 **Product:** AIProxyGuard - LLM Security Proxy with Signature Sync
-**Author:** SEMCL.ONE
+**Author:** AInvirion
 **Date:** 2026-03-18
 **Status:** Approved
 
@@ -13,7 +13,7 @@ AIProxyGuard is an open-source HTTP proxy that sits between applications and LLM
 
 **Business model:** Open-source proxy with bundled basic signatures. Paid subscription for continuously-updated compiled signatures, fleet management, and advanced ML detection.
 
-**Part of:** SEMCL.ONE portfolio (alongside aisniff, binarysniffer, etc.)
+**Part of:** AInvirion open-source portfolio
 
 ---
 
@@ -534,7 +534,7 @@ docker run -d \
   -p 8080:8080 \
   -e AIPROXYGUARD_API_KEY=apg_xxx \
   -v /etc/aiproxyguard:/etc/aiproxyguard \
-  ghcr.io/semclone/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 
 # App configuration
 export HTTPS_PROXY=http://localhost:8080
@@ -1452,7 +1452,7 @@ spec:
     spec:
       containers:
       - name: proxy
-        image: ghcr.io/semclone/aiproxyguard:latest
+        image: ghcr.io/ainvirion/aiproxyguard:latest
         ports:
         - containerPort: 8080
         env:
