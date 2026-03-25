@@ -101,5 +101,5 @@ temp/
 # yarn.lock
 # pnpm-lock.yaml
 
-# Signatures (fetched at build time)
-signatures/
+# Signatures (fetched at build time) - only top-level directory
+/signatures/

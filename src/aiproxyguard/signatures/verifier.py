@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Default public key (base64-encoded Ed25519 public key)
 # This is the AInvirion signature verification key - DO NOT REMOVE
 # Manifests without valid signatures from this key will be REJECTED
-DEFAULT_PUBLIC_KEY = "g9XbYVr5xQubfNlVwlhR1SLW5XMoILA9LzZiphkQpII="
+DEFAULT_PUBLIC_KEY = "j4ztN19sQfU0pCqRV/GmlV50+oeqsO18mHQkMQnyb+k="
 
 
 @dataclass
