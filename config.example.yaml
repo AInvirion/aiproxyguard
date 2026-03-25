@@ -1,0 +1,108 @@
+# AIProxyGuard Configuration Example
+# Copy this file to config.yaml and customize as needed
+
+# Server settings
+server:
+  host: "0.0.0.0"        # Bind address (0.0.0.0 for all interfaces)
+  port: 8080             # Listen port
+  workers: 2             # Number of workers (reserved for future use)
+
+# Upstream LLM providers
+# Add providers you want to proxy. Requests to /openai/* go to the openai upstream, etc.
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+    timeout: 60s
+    auth_header: "Authorization"    # Header containing the API key
+  anthropic:
+    url: "https://api.anthropic.com"
+    timeout: 60s
+    auth_header: "x-api-key"
+  # Uncomment to add more providers:
+  # openrouter:
+  #   url: "https://openrouter.ai/api"
+  #   timeout: 120s
+  #   auth_header: "Authorization"
+  # ollama:
+  #   url: "http://localhost:11434"
+  #   timeout: 300s
+  #   auth_header: null
+
+# Scanner settings
+scanner:
+  enabled: true          # Master switch for all scanning
+  regex: true            # Enable regex pattern matching
+  heuristics: true       # Enable heuristic detection (base64, encoding tricks)
+  ml_classifier: false   # ML classifier (not yet implemented)
+  response:              # Response scanning (detect sensitive data in LLM responses)
+    enabled: false       # Set to true to scan responses
+    mode: "buffered"     # "passthrough", "buffered", or "full"
+    buffer_size: 1024    # Characters to buffer before scanning (buffered mode)
+    categories: []       # Categories to scan for (empty = all)
+
+# Policy engine - controls what happens when threats are detected
+policy:
+  default_action: "block"  # Default: "allow", "log", "warn", or "block"
+  categories:
+    prompt_injection:
+      action: "block"
+      threshold: 0.8       # Confidence threshold (0.0-1.0)
+    jailbreak:
+      action: "block"
+      threshold: 0.7
+    # encoding_evasion:    # Uncomment to customize heuristic handling
+    #   action: "warn"
+    #   threshold: 0.6
+  # allowlists:            # Uncomment to bypass scanning for specific clients
+  #   - client_id: "internal-service-*"
+  #     categories: ["prompt_injection"]
+
+# Signature location
+signatures:
+  path: "/app/signatures"  # Path to signature YAML files (Docker default)
+
+# Security settings
+security:
+  failure_mode: "open"     # "open" = allow on error, "closed" = block on error
+  scanner_timeout_ms: 100  # Max scanner time before timeout
+  upstream_timeout_s: 60   # Upstream request timeout
+  max_request_size: 10485760   # 10 MB max request body
+  max_response_size: 52428800  # 50 MB max response body
+  expose_details: false    # Never expose signature patterns to clients
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  path: "/metrics"
+
+# Structured logging
+logging:
+  level: "info"            # "debug", "info", "warning", "error"
+  format: "json"           # "json" or "text"
+  redact_keys: true        # Redact API keys in logs
+
+# Client identity resolution (for metrics and allowlists)
+identity:
+  method: "ip"             # "ip", "header", "token", or "mtls"
+  header_name: "X-Client-ID"
+  trust_xff: false         # Trust X-Forwarded-For header
+  hash_token: true         # Hash tokens for privacy
+
+# Control plane integration (optional)
+# Connect to hosted control plane for fleet management and signature sync
+control_plane:
+  enabled: false
+  url: "${CONTROL_PLANE_URL:-https://api.aiproxyguard.com}"
+  api_key: "${CONTROL_PLANE_API_KEY}"
+  heartbeat_interval: 60
+  sync_signatures: true
+  report_telemetry: true
+
+# TLS interception (advanced, optional)
+# Enables MITM proxy for inspecting HTTPS traffic
+tls:
+  enabled: false
+  ca_cert: "/etc/aiproxyguard/ca.crt"
+  ca_key: "/etc/aiproxyguard/ca.key"
+  cert_cache_size: 1000
+  cert_validity_days: 30
