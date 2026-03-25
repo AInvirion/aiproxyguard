@@ -134,3 +134,39 @@ identity:
         assert config.identity.header_name == "X-API-Key"
         assert config.identity.trust_xff is True
         assert config.identity.hash_token is False
+
+    def test_security_defaults(self, tmp_path: Path) -> None:
+        """Security config has secure defaults."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+""")
+        config = load_config(str(config_file))
+        assert config.security.max_request_size == 10 * 1024 * 1024  # 10 MB
+        assert config.security.max_response_size == 50 * 1024 * 1024  # 50 MB
+        assert config.security.expose_details is False
+
+    def test_security_custom_config(self, tmp_path: Path) -> None:
+        """Security configuration is parsed correctly."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+security:
+  max_request_size: 1048576
+  max_response_size: 5242880
+  expose_details: false
+  failure_mode: "closed"
+""")
+        config = load_config(str(config_file))
+        assert config.security.max_request_size == 1048576  # 1 MB
+        assert config.security.max_response_size == 5242880  # 5 MB
+        assert config.security.expose_details is False
+        assert config.security.failure_mode == "closed"

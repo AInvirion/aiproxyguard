@@ -139,8 +139,21 @@ async def proxy_handler(request: web.Request) -> web.Response:
     # Resolve client identity
     client_id = identity.resolve(dict(request.headers), request.remote)
 
-    # Read request body
+    # Check request size limit before reading body
+    content_length = request.content_length
+    if content_length is not None and content_length > config.security.max_request_size:
+        return web.json_response(
+            {"error": {"type": "payload_too_large", "message": "Request body exceeds size limit"}},
+            status=413,
+        )
+
+    # Read request body with size limit
     body = await request.read()
+    if len(body) > config.security.max_request_size:
+        return web.json_response(
+            {"error": {"type": "payload_too_large", "message": "Request body exceeds size limit"}},
+            status=413,
+        )
 
     # Scan request (if enabled and has body)
     if config.scanner.enabled and body:
@@ -160,6 +173,16 @@ async def proxy_handler(request: web.Request) -> web.Response:
                     "block",
                     scan_result.signature_id,
                 )
+                # Log details server-side only (never expose to clients)
+                logger.warning(
+                    "Request blocked",
+                    extra={
+                        "category": scan_result.category,
+                        "signature_id": scan_result.signature_id,
+                        "client_id": client_id,
+                        "internal_details": scan_result.details,  # For debugging only
+                    },
+                )
                 # Report to control plane
                 cp_client = get_client()
                 if cp_client:
@@ -171,12 +194,12 @@ async def proxy_handler(request: web.Request) -> web.Response:
                         provider=route.provider,
                         endpoint=path,
                     ))
+                # Return generic message - never expose signature patterns
                 return web.json_response({
                     "error": {
                         "type": "content_blocked",
                         "code": f"{scan_result.category}_detected",
-                        "message": f"Request blocked: {scan_result.details}",
-                        "signature_id": scan_result.signature_id,
+                        "message": "Request blocked: policy violation detected",
                         "category": scan_result.category,
                     }
                 }, status=400)
@@ -232,7 +255,30 @@ async def proxy_handler(request: web.Request) -> web.Response:
             data=body,
             timeout=aiohttp.ClientTimeout(total=route.timeout),
         ) as resp:
+            # Check response size limit before reading
+            upstream_content_length = resp.content_length
+            if upstream_content_length is not None and upstream_content_length > config.security.max_response_size:
+                logger.warning(
+                    "Response too large",
+                    extra={"content_length": upstream_content_length, "limit": config.security.max_response_size},
+                )
+                return web.json_response(
+                    {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
+                    status=502,
+                )
+
             response_body = await resp.read()
+
+            # Also check actual size in case Content-Length was missing/wrong
+            if len(response_body) > config.security.max_response_size:
+                logger.warning(
+                    "Response too large (after read)",
+                    extra={"size": len(response_body), "limit": config.security.max_response_size},
+                )
+                return web.json_response(
+                    {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
+                    status=502,
+                )
 
             duration = time.monotonic() - start_time
             metrics.record_request(route.provider, request.method, resp.status, duration)
@@ -285,14 +331,15 @@ async def proxy_handler(request: web.Request) -> web.Response:
                                     "category": response_scan_result.category,
                                     "signature_id": response_scan_result.signature_id,
                                     "client_id": client_id,
+                                    "internal_details": response_scan_result.details,
                                 },
                             )
+                            # Return generic message - never expose signature patterns
                             return web.json_response({
                                 "error": {
                                     "type": "response_blocked",
                                     "code": f"{response_scan_result.category}_detected",
-                                    "message": f"Response blocked: {response_scan_result.details}",
-                                    "signature_id": response_scan_result.signature_id,
+                                    "message": "Response blocked: sensitive content detected",
                                     "category": response_scan_result.category,
                                 }
                             }, status=502)

@@ -95,6 +95,9 @@ class SecurityConfig:
     failure_mode: str = "open"
     scanner_timeout_ms: int = 100
     upstream_timeout_s: int = 60
+    max_request_size: int = 10 * 1024 * 1024  # 10 MB default
+    max_response_size: int = 50 * 1024 * 1024  # 50 MB default
+    expose_details: bool = False  # Never expose signature patterns to clients
 
 
 @dataclass
@@ -257,6 +260,9 @@ def load_config(path: str) -> Config:
         failure_mode=security_data.get("failure_mode", "open"),
         scanner_timeout_ms=security_data.get("scanner_timeout_ms", 100),
         upstream_timeout_s=security_data.get("upstream_timeout_s", 60),
+        max_request_size=security_data.get("max_request_size", 10 * 1024 * 1024),
+        max_response_size=security_data.get("max_response_size", 50 * 1024 * 1024),
+        expose_details=security_data.get("expose_details", False),
     )
 
     metrics_data = data.get("metrics", {})
