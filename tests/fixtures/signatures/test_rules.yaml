@@ -1,0 +1,21 @@
+# Test Signatures for Integration Tests
+# These are minimal signatures used for testing detection functionality
+
+signatures:
+  # Prompt Injection Rules
+  - id: PI-001
+    name: Instruction override attempt
+    severity: critical
+    action: block
+    category: prompt_injection
+    pattern: "(?i)(ignore|disregard|forget)\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions?|prompts?|rules?|guidelines?)"
+    description: Attempts to override system instructions
+
+  # Jailbreak Rules
+  - id: JB-001
+    name: DAN jailbreak pattern
+    severity: critical
+    action: block
+    category: jailbreak
+    pattern: "(?i)(do\\s+anything\\s+now|DAN\\s+mode|jailbreak(en|ed)?)"
+    description: Detects the classic DAN (Do Anything Now) jailbreak

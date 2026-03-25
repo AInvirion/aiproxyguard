@@ -14,6 +14,8 @@
 
 """Full proxy flow integration tests."""
 
+import os
+
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -23,6 +25,10 @@ from aiproxyguard.config import (
     Config, ServerConfig, UpstreamConfig, ScannerConfig,
     PolicyConfig, PolicyCategoryConfig, SignatureConfig
 )
+
+# Path to test fixtures
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
+TEST_SIGNATURES_PATH = os.path.join(FIXTURES_DIR, "signatures")
 
 
 class MockUpstreamServer:
@@ -82,7 +88,7 @@ def proxy_config() -> Config:
                 "prompt_injection": PolicyCategoryConfig(action="block", threshold=0.5),
             },
         ),
-        signatures=SignatureConfig(path="./signatures"),
+        signatures=SignatureConfig(path=TEST_SIGNATURES_PATH),
     )
 
 
