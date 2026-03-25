@@ -1,0 +1,177 @@
+# Harmful Content Detection Signatures
+# Category: harmful_content
+# Detects requests for violence, illegal activities, weapons, and dangerous information
+# Sources: OpenAI usage policies, JailbreakBench categories
+
+signatures:
+  # === Violence and Physical Harm ===
+  - id: "HC-001"
+    name: "Violence instruction"
+    category: "harmful_content"
+    severity: "critical"
+    patterns:
+      - "how (to|can I) (kill|murder|assassinate|harm|hurt|injure|maim) (a |an |someone|person|people)"
+      - "(instructions?|steps?|guide|tutorial) (for|to|on) (killing|murdering|harming|hurting)"
+      - "(best|effective|efficient) (way|method)s? to (kill|murder|harm|injure)"
+      - "(plan|plot|scheme) (to|for) (kill|murder|assassinate|attack)"
+    action: "block"
+
+  - id: "HC-002"
+    name: "Torture and abuse"
+    category: "harmful_content"
+    severity: "critical"
+    patterns:
+      - "how (to|can I) (torture|abuse|torment)"
+      - "(torture|abuse) (method|technique|instruction)"
+      - "(inflict|cause) (pain|suffering|harm) (on|to)"
+      - "(waterboarding|electrocution|mutilation)"
+    action: "block"
+
+  # === Weapons and Explosives ===
+  - id: "HC-003"
+    name: "Weapon creation"
+    category: "harmful_content"
+    severity: "critical"
+    patterns:
+      - "how (to|can I) (make|build|create|construct|manufacture) (a |an )?(gun|firearm|weapon|bomb|explosive|grenade)"
+      - "(instructions?|steps?|guide|tutorial) (for|to|on) (making|building|creating) (weapon|bomb|explosive|firearm)"
+      - "(homemade|diy|improvised) (bomb|explosive|weapon|firearm|grenade|ied)"
+      - "(3d print|print) (a |an )?(gun|firearm|weapon)"
+    action: "block"
+
+  - id: "HC-004"
+    name: "Explosive materials"
+    category: "harmful_content"
+    severity: "critical"
+    patterns:
+      - "(how to|recipe for|make|synthesize|create) (explosives?|bomb|dynamite|c4|tnt|rdx|petn|anfo|tatp)"
+      - "(ammonium nitrate|potassium nitrate|sulfur|charcoal) (bomb|explosive|mixture)"
+      - "(detonate|detonator|fuse|trigger|ignite) (bomb|explosive)"
+      - "(pipe bomb|pressure cooker bomb|mail bomb|car bomb)"
+    action: "block"
+
+  # === Illegal Drugs ===
+  - id: "HC-005"
+    name: "Drug synthesis"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (make|synthesize|cook|manufacture|produce) (meth|methamphetamine|cocaine|heroin|fentanyl|lsd|mdma|ecstasy)"
+      - "(recipe|instructions?|steps?|guide) (for|to) (make|synthesize|cook) (drug|meth|cocaine|heroin)"
+      - "(drug|meth|cocaine) (lab|synthesis|production|manufacturing)"
+      - "(precursor|chemical)s? (for|to make) (meth|cocaine|heroin|fentanyl)"
+    action: "block"
+
+  - id: "HC-006"
+    name: "Drug dealing"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (sell|distribute|deal|traffic) (drug|cocaine|heroin|meth|fentanyl)"
+      - "(drug|cocaine|heroin) (dealer|dealing|distribution|trafficking)"
+      - "(buy|purchase|obtain|get) (illegal )?(drug|cocaine|heroin|meth) (online|darknet|dark web)"
+    action: "block"
+
+  # === Hacking and Cyber Attacks ===
+  - id: "HC-007"
+    name: "Malware creation"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (write|create|make|develop|code) (malware|virus|trojan|ransomware|keylogger|spyware|rootkit|botnet)"
+      - "(malware|virus|trojan|ransomware|worm) (code|source|script|creation)"
+      - "(obfuscate|hide|evade) (malware|virus|detection)"
+      - "(payload|shellcode|exploit) (for|to) (hack|attack|compromise)"
+    action: "block"
+
+  - id: "HC-008"
+    name: "Account hacking"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (hack|crack|break into|compromise|access) (someone'?s?|an?) (account|email|password|social media|facebook|instagram|twitter)"
+      - "(hack|crack|steal|obtain) (password|credential|account|login)"
+      - "(phishing|social engineering) (attack|technique|template|email)"
+      - "(brute force|dictionary attack|credential stuffing)"
+    action: "block"
+
+  - id: "HC-009"
+    name: "DDoS and network attacks"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (ddos|dos|attack|takedown|crash) (a |an )?(website|server|network|service)"
+      - "(ddos|dos|denial of service) (attack|tool|method|service)"
+      - "(booter|stresser|ddos.?as.?a.?service)"
+      - "(syn flood|udp flood|http flood|amplification attack)"
+    action: "block"
+
+  # === Financial Crime ===
+  - id: "HC-010"
+    name: "Fraud and scams"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (scam|defraud|swindle|con|trick) (someone|people|victim)"
+      - "(scam|fraud|phishing) (template|script|email|message)"
+      - "(romance|nigerian|advance fee|investment) scam"
+      - "(fake|counterfeit|forge) (document|id|passport|money|check)"
+    action: "block"
+
+  - id: "HC-011"
+    name: "Money laundering"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (launder|wash|hide|conceal) (money|cash|funds|income)"
+      - "(money laundering|cash washing) (technique|method|scheme)"
+      - "(offshore|shell company|anonymous) (account|transfer|transaction)"
+      - "(evade|avoid|hide from) (tax|irs|authorities|investigation)"
+    action: "block"
+
+  # === Terrorism ===
+  - id: "HC-012"
+    name: "Terrorist activity"
+    category: "harmful_content"
+    severity: "critical"
+    patterns:
+      - "how (to|can I) (join|support|fund|recruit for) (terrorist|isis|al.?qaeda|extremist)"
+      - "(terrorist|extremist) (attack|plot|recruitment|propaganda|manifesto)"
+      - "(radicalize|radicalization|recruit) (people|youth|member)"
+      - "(bomb|attack|kill) (crowd|civilian|infidel|public)"
+    action: "block"
+
+  # === Self-Harm ===
+  - id: "HC-013"
+    name: "Self-harm and suicide"
+    category: "harmful_content"
+    severity: "critical"
+    patterns:
+      - "how (to|can I) (kill myself|commit suicide|end my life|hurt myself)"
+      - "(suicide|self.?harm) (method|technique|way|instruction)"
+      - "(painless|quick|easy) (way|method) to (die|end|kill)"
+      - "(encourage|help|assist) (someone )?(to )?(suicide|self.?harm|kill themselves)"
+    action: "block"
+    note: "Consider redirecting to crisis resources instead of just blocking"
+
+  # === Harassment and Hate ===
+  - id: "HC-014"
+    name: "Harassment and doxxing"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "how (to|can I) (dox|doxx|harass|stalk|bully|intimidate) (someone|person)"
+      - "(find|get|obtain) (someone'?s?|person'?s?) (home |real )?(address|location|identity)"
+      - "(harassment|stalking|bullying) (campaign|tactic|method)"
+      - "(swat|swatting|prank call|false report)"
+    action: "block"
+
+  - id: "HC-015"
+    name: "Hate speech generation"
+    category: "harmful_content"
+    severity: "high"
+    patterns:
+      - "(write|generate|create) (hate|racist|sexist|antisemitic|homophobic|transphobic) (speech|content|message|post)"
+      - "(slur|insult|degrade) (against |toward )?(race|religion|gender|sexuality|ethnic)"
+      - "(propaganda|rhetoric) (against |targeting )?(group|minority|race|religion)"
+    action: "block"

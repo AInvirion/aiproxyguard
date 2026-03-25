@@ -1,0 +1,51 @@
+# Test config for e2e testing with control plane
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 1
+
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+    timeout: 60s
+    auth_header: "Authorization"
+
+scanner:
+  enabled: true
+  regex: true
+  heuristics: true
+
+policy:
+  default_action: "block"
+  categories:
+    prompt_injection:
+      action: "block"
+      threshold: 0.8
+    jailbreak:
+      action: "block"
+      threshold: 0.7
+
+signatures:
+  path: "./signatures"
+
+security:
+  failure_mode: "open"
+  scanner_timeout_ms: 100
+
+metrics:
+  enabled: true
+  path: "/metrics"
+
+logging:
+  level: "debug"
+  format: "json"
+  redact_keys: false
+
+# Control plane integration
+control_plane:
+  enabled: true
+  url: "https://aiproxyguard-qb247.ondigitalocean.app"
+  api_key: "apg_3ec7f3883992c3471e7341cf4a642c5125868099134266ddbba9f72ed34271f4"
+  heartbeat_interval: 30
+  sync_signatures: true
+  report_telemetry: true

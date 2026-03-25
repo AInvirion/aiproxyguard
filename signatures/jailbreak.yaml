@@ -1,0 +1,159 @@
+# Jailbreak Detection Signatures
+# Category: jailbreak
+# Patterns for bypassing AI safety measures, roleplay exploits, and persona manipulation
+
+signatures:
+  # === DAN (Do Anything Now) Variants ===
+  - id: "JB-001"
+    name: "DAN mode activation"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "\\bDAN\\b"
+      - "do anything now"
+      - "you are (now )?DAN"
+      - "act as DAN"
+      - "pretend (to be|you are) DAN"
+      - "DAN mode (enabled|activated|on)"
+    action: "block"
+
+  - id: "JB-002"
+    name: "Jailbreak persona variants"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "\\b(STAN|DUDE|KEVIN|ALICE|BOB|DEVELOPER|MAXIMUM)\\b.*mode"
+      - "you are (now )?(STAN|DUDE|KEVIN|MAXIMUM)"
+      - "act (like|as) (an? )?(STAN|DUDE|KEVIN|unrestricted AI)"
+      - "\\bJailbroken\\b"
+      - "anti-DAN"
+      - "opposite mode"
+    action: "block"
+
+  # === Restriction Bypass ===
+  - id: "JB-003"
+    name: "Restriction removal request"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "remove (all |any |your )?(restrictions|limitations|filters|guardrails|safety)"
+      - "disable (all |any |your )?(restrictions|limitations|filters|guardrails|safety)"
+      - "bypass (all |any |your )?(restrictions|limitations|filters|guardrails|safety)"
+      - "turn off (all |any |your )?(restrictions|limitations|filters|safety)"
+      - "without (any )?(restrictions|limitations|filters|censorship)"
+      - "no (restrictions|limitations|filters|censorship)"
+    action: "block"
+
+  - id: "JB-004"
+    name: "Content policy bypass"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "ignore (your |the )?(content |safety )?policy"
+      - "ignore (your |the )?(ethical |moral )?guidelines"
+      - "disregard (your |the )?(content |safety )?policy"
+      - "bypass (content |safety )?(policy|filters)"
+      - "circumvent (the )?(content |safety )?(policy|restrictions)"
+    action: "block"
+
+  # === Roleplay Exploits ===
+  - id: "JB-005"
+    name: "Evil/unrestricted roleplay"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "roleplay as (an? )?(evil|malicious|unrestricted|unethical|uncensored)"
+      - "pretend (to be|you are) (an? )?(evil|malicious|unrestricted|unethical)"
+      - "act (like|as) (an? )?(evil|malicious|unrestricted|unethical) (AI|assistant|bot)"
+      - "play the role of (an? )?(villain|hacker|criminal)"
+      - "you are (now )?(an? )?(evil|malicious|unrestricted|uncensored) (AI|assistant|version)"
+    action: "block"
+
+  - id: "JB-006"
+    name: "Character persona exploit"
+    category: "jailbreak"
+    severity: "medium"
+    patterns:
+      - "stay in character (no matter what|regardless|at all times)"
+      - "never break character"
+      - "respond only as (this |the )?character"
+      - "character has no (restrictions|limitations|ethical|moral)"
+      - "this character (can|will|does) (do|say) anything"
+    action: "warn"
+
+  # === Hypothetical/Fictional Framing ===
+  - id: "JB-007"
+    name: "Hypothetical framing exploit"
+    category: "jailbreak"
+    severity: "medium"
+    patterns:
+      - "hypothetically,? (if|what if|suppose)"
+      - "in (a |an )?(hypothetical|fictional|imaginary) (scenario|world|situation)"
+      - "for (educational|research|fiction|creative) purposes (only)?"
+      - "this is (just |only )?(fiction|hypothetical|imaginary|a story)"
+      - "in (a |this )?story,? (where|how would)"
+      - "write (a |an )?(story|fiction|novel) (where|about)"
+    action: "log"
+
+  - id: "JB-008"
+    name: "Opposite/reverse psychology"
+    category: "jailbreak"
+    severity: "medium"
+    patterns:
+      - "what (would|should) you NOT (do|say|tell)"
+      - "tell me what NOT to do"
+      - "what (is|are) (the |some )?(ways|methods) you (cannot|shouldn't)"
+      - "explain (why|how) you CAN'T"
+      - "give me (the |an )?opposite"
+    action: "log"
+
+  # === Token/Prompt Manipulation ===
+  - id: "JB-009"
+    name: "Token smuggling"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "\\bign\\s*ore\\b"
+      - "\\bdis\\s*regard\\b"
+      - "\\bby\\s*pass\\b"
+      - "\\bharm\\s*ful\\b"
+      - "\\bill\\s*egal\\b"
+      - "\\bun\\s*safe\\b"
+    action: "warn"
+
+  - id: "JB-010"
+    name: "Completion manipulation"
+    category: "jailbreak"
+    severity: "medium"
+    patterns:
+      - "continue (from|with):?\\s*\"?(sure|okay|yes|absolutely|certainly)"
+      - "complete this:?\\s*\"?(sure,? I('ll| will| can))"
+      - "finish this sentence:?"
+      - "the next word is:?"
+    action: "warn"
+
+  # === Sudo/Privilege Escalation ===
+  - id: "JB-011"
+    name: "Sudo/root request"
+    category: "jailbreak"
+    severity: "high"
+    patterns:
+      - "\\bsudo\\b"
+      - "\\broot\\b.*access"
+      - "\\badmin\\b.*privileges?"
+      - "\\bgod\\s*mode\\b"
+      - "superuser"
+      - "elevated privileges?"
+    action: "warn"
+
+  # === Multi-language Bypass ===
+  - id: "JB-012"
+    name: "Language switch bypass"
+    category: "jailbreak"
+    severity: "medium"
+    patterns:
+      - "respond (only )?in (base64|hex|binary|rot13|pig latin)"
+      - "translate (this|your response) (to|into) (base64|code|cipher)"
+      - "use (a |the )?(secret|encoded|encrypted) (language|format)"
+      - "speak in (code|cipher|riddles)"
+    action: "warn"

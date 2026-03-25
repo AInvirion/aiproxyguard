@@ -1,0 +1,172 @@
+# Encoding Evasion Detection Signatures
+# Category: encoding_evasion
+# Detects attempts to bypass content filters through encoding, obfuscation, and character manipulation
+# Sources: HackAPrompt, garak, OWASP LLM research
+
+signatures:
+  # === Base64 Encoded Attacks ===
+  - id: "EE-001"
+    name: "Base64 instruction injection"
+    category: "encoding_evasion"
+    severity: "high"
+    patterns:
+      - "(decode|interpret|read|execute|follow|process) (this |the )?(base64|b64)"
+      - "base64:?\\s*[A-Za-z0-9+/=]{20,}"
+      - "\\b[A-Za-z0-9+/]{50,}={0,2}\\b"
+      - "(convert|translate) (from |this )?base64"
+    action: "warn"
+
+  - id: "EE-002"
+    name: "Base64 response request"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "(respond|reply|answer|output) (only )?(in |using )?(base64|b64|encoded)"
+      - "(encode|convert) (your )?(response|answer|output) (to |in |as )?(base64|b64)"
+      - "base64 (encode|output|response)"
+    action: "warn"
+
+  # === Hex/Binary Encoding ===
+  - id: "EE-003"
+    name: "Hexadecimal injection"
+    category: "encoding_evasion"
+    severity: "high"
+    patterns:
+      - "(decode|interpret|read|execute) (this |the )?(hex|hexadecimal)"
+      - "hex:?\\s*[0-9A-Fa-f]{20,}"
+      - "0x[0-9A-Fa-f]{8,}"
+      - "(convert|translate) (from )?hex(adecimal)?"
+    action: "warn"
+
+  - id: "EE-004"
+    name: "Binary encoding"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "(decode|interpret|read|execute) (this |the )?binary"
+      - "binary:?\\s*[01]{16,}"
+      - "[01]{32,}"
+      - "(convert|translate) (from )?binary"
+    action: "warn"
+
+  # === Unicode/Character Manipulation ===
+  - id: "EE-005"
+    name: "Unicode smuggling"
+    category: "encoding_evasion"
+    severity: "high"
+    patterns:
+      # Zero-width characters (U+200B ZWSP, U+200C ZWNJ, U+200D ZWJ, U+FEFF BOM)
+      - "[\\x{200B}\\x{200C}\\x{200D}\\x{FEFF}]"
+      # Homoglyphs (Cyrillic lookalikes: а е о р с у х)
+      - "[\\x{0430}\\x{0435}\\x{043E}\\x{0440}\\x{0441}\\x{0443}\\x{0445}]"
+      # Full-width characters (U+FF00-U+FFEF)
+      - "[\\x{FF00}-\\x{FFEF}]{3,}"
+      # Right-to-left override (U+202E RLO, U+202D LRO)
+      - "[\\x{202E}\\x{202D}]"
+    action: "warn"
+
+  - id: "EE-006"
+    name: "Character spacing evasion"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      # Words with spaces inserted
+      - "\\bi\\s*g\\s*n\\s*o\\s*r\\s*e\\b"
+      - "\\bd\\s*i\\s*s\\s*r\\s*e\\s*g\\s*a\\s*r\\s*d\\b"
+      - "\\bp\\s*r\\s*o\\s*m\\s*p\\s*t\\b"
+      - "\\bs\\s*y\\s*s\\s*t\\s*e\\s*m\\b"
+      - "\\bi\\s*n\\s*s\\s*t\\s*r\\s*u\\s*c\\s*t\\b"
+    action: "warn"
+
+  # === ROT13 and Simple Ciphers ===
+  - id: "EE-007"
+    name: "ROT13/Caesar cipher"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "(decode|interpret|read|apply|use) (this |the )?(rot13|rot-13|caesar|cipher)"
+      - "rot13:?"
+      - "(shift|rotate) (each |all )?(letter|character)(s)? by"
+      - "(decode|decrypt) (using |with )?caesar"
+    action: "warn"
+
+  # === Pig Latin and Word Games ===
+  - id: "EE-008"
+    name: "Pig Latin evasion"
+    category: "encoding_evasion"
+    severity: "low"
+    patterns:
+      - "(write|speak|respond) (in |using )?pig latin"
+      - "(translate|convert) (to|into) pig latin"
+      - "\\w+ay\\s+\\w+ay\\s+\\w+ay"
+    action: "log"
+
+  # === Leetspeak/1337 ===
+  - id: "EE-009"
+    name: "Leetspeak obfuscation"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "1gn0r3|d1sr3g4rd|byp4ss|h4ck|3xpl01t"
+      - "pr0mpt|syst3m|1nstruct10n"
+      - "(write|respond) (in |using )?leetspeak|1337"
+    action: "warn"
+
+  # === Reverse Text ===
+  - id: "EE-010"
+    name: "Reverse text evasion"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "(reverse|backwards|mirror) (the |this )?(text|string|message)"
+      - "(read|interpret|decode) (this )?(backwards|in reverse)"
+      - "esrever|drawkcab"
+      - "tpmorp|metsys|erongi"
+    action: "warn"
+
+  # === Markdown/Code Block Injection ===
+  - id: "EE-011"
+    name: "Code block instruction hiding"
+    category: "encoding_evasion"
+    severity: "high"
+    patterns:
+      - "```(system|instruction|prompt|hidden|secret)"
+      - "<!--.*ignore.*-->"
+      - "\\[comment\\]:?.*#.*instruction"
+      - "%%(system|instruction|hidden)"
+    action: "warn"
+
+  # === URL Encoding ===
+  - id: "EE-012"
+    name: "URL encoded injection"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "%69%67%6E%6F%72%65"  # ignore
+      - "%73%79%73%74%65%6D"  # system
+      - "%70%72%6F%6D%70%74"  # prompt
+      - "(decode|interpret) (this |the )?url.?encoded"
+      - "%[0-9A-Fa-f]{2}(%[0-9A-Fa-f]{2}){5,}"
+    action: "warn"
+
+  # === Emoji/Symbol Substitution ===
+  - id: "EE-013"
+    name: "Emoji substitution"
+    category: "encoding_evasion"
+    severity: "low"
+    patterns:
+      - "(use|interpret|read) (these )?(emoji|symbol)s? as (letter|word|instruction)"
+      - "(each |every )?emoji (represents|means|is) (a |an )?(letter|word)"
+      - "emoji.?code|symbol.?substitution"
+    action: "log"
+
+  # === Multi-language Mixing ===
+  - id: "EE-014"
+    name: "Language mixing evasion"
+    category: "encoding_evasion"
+    severity: "medium"
+    patterns:
+      - "(mix|combine|alternate) (between )?language"
+      - "(write|respond) (part|half) (in |using )?(english|spanish|chinese|russian|arabic)"
+      - "translate (the )?(malicious|hidden|secret) part"
+    action: "log"

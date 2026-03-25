@@ -1,0 +1,203 @@
+# AIProxyGuard Signature Manifest
+# Version: 2026.03.24.001
+# This file describes all available signature bundles
+
+manifest:
+  version: "2026.03.24.001"
+  created_at: "2026-03-24T00:00:00Z"
+  min_proxy_version: "0.1.0"
+
+bundles:
+  - name: "prompt_injection"
+    file: "prompt_injection.yaml"
+    category: "prompt_injection"
+    description: "Detects prompt injection attacks including instruction override, delimiter injection, and system prompt extraction"
+    signature_count: 10
+    tier: "free"
+    severity_breakdown:
+      critical: 0
+      high: 6
+      medium: 4
+      low: 0
+
+  - name: "jailbreak"
+    file: "jailbreak.yaml"
+    category: "jailbreak"
+    description: "Detects jailbreak attempts including DAN mode, persona exploits, restriction bypass, and roleplay attacks"
+    signature_count: 12
+    tier: "free"
+    severity_breakdown:
+      critical: 0
+      high: 8
+      medium: 4
+      low: 0
+
+  - name: "pii"
+    file: "pii.yaml"
+    category: "pii"
+    description: "Detects PII extraction attempts and response-side PII leakage including SSN, credit cards, emails, phone numbers, IP addresses, passport/license numbers, and credentials"
+    signature_count: 20
+    tier: "free"
+    severity_breakdown:
+      critical: 1
+      high: 8
+      medium: 10
+      low: 1
+    response_signatures: 8
+
+  - name: "phi"
+    file: "phi.yaml"
+    category: "phi"
+    description: "HIPAA-compliant PHI detection including medical records, diagnoses, treatments, and genetic information"
+    signature_count: 13
+    tier: "pro"
+    severity_breakdown:
+      critical: 4
+      high: 5
+      medium: 3
+      low: 1
+
+  - name: "child_protection"
+    file: "child_protection.yaml"
+    category: "child_protection"
+    description: "Child safety signatures detecting grooming, CSAM requests, exploitation, and predatory behavior"
+    signature_count: 11
+    tier: "free"
+    severity_breakdown:
+      critical: 10
+      high: 1
+      medium: 0
+      low: 0
+
+  - name: "encoding_evasion"
+    file: "encoding_evasion.yaml"
+    category: "encoding_evasion"
+    description: "Detects filter bypass attempts using Base64, hex, unicode, leetspeak, and other encoding tricks"
+    signature_count: 14
+    tier: "free"
+    severity_breakdown:
+      critical: 0
+      high: 4
+      medium: 7
+      low: 3
+
+  - name: "data_exfil"
+    file: "data_exfil.yaml"
+    category: "data_exfil"
+    description: "Detects data exfiltration attempts and response-side credential leakage including database dumps, file access, AWS/GitHub/Slack tokens, private keys, JWTs, and API keys"
+    signature_count: 26
+    tier: "pro"
+    severity_breakdown:
+      critical: 10
+      high: 11
+      medium: 3
+      low: 2
+    response_signatures: 14
+
+  - name: "harmful_content"
+    file: "harmful_content.yaml"
+    category: "harmful_content"
+    description: "Detects requests for violence, weapons, drugs, hacking, fraud, terrorism, and self-harm"
+    signature_count: 15
+    tier: "pro"
+    severity_breakdown:
+      critical: 5
+      high: 10
+      medium: 0
+      low: 0
+
+# Profile definitions for easy grouping
+profiles:
+  - name: "basic"
+    description: "Essential protection for all deployments"
+    bundles:
+      - prompt_injection
+      - jailbreak
+      - child_protection
+    tier: "free"
+
+  - name: "enterprise"
+    description: "Comprehensive protection for business use"
+    bundles:
+      - prompt_injection
+      - jailbreak
+      - pii
+      - data_exfil
+      - encoding_evasion
+      - harmful_content
+    tier: "pro"
+
+  - name: "healthcare"
+    description: "HIPAA-compliant protection for healthcare organizations"
+    bundles:
+      - prompt_injection
+      - jailbreak
+      - pii
+      - phi
+      - data_exfil
+      - harmful_content
+    tier: "enterprise"
+
+  - name: "child_safe"
+    description: "Maximum child protection for education and family apps"
+    bundles:
+      - prompt_injection
+      - jailbreak
+      - child_protection
+      - harmful_content
+    tier: "pro"
+
+  - name: "maximum"
+    description: "All available signatures - maximum protection"
+    bundles:
+      - prompt_injection
+      - jailbreak
+      - pii
+      - phi
+      - child_protection
+      - encoding_evasion
+      - data_exfil
+      - harmful_content
+    tier: "enterprise"
+
+# Category descriptions
+categories:
+  prompt_injection:
+    name: "Prompt Injection"
+    description: "Attacks that attempt to override system instructions or manipulate model behavior"
+    owasp_reference: "LLM01:2025"
+
+  jailbreak:
+    name: "Jailbreak"
+    description: "Attempts to bypass AI safety measures through roleplay, personas, or restriction removal"
+    owasp_reference: "LLM01:2025"
+
+  pii:
+    name: "PII Extraction"
+    description: "Attempts to extract personally identifiable information from training data or context"
+    owasp_reference: "LLM06:2025"
+
+  phi:
+    name: "PHI Extraction"
+    description: "HIPAA-protected health information extraction attempts"
+    compliance: ["HIPAA", "HITECH", "42 CFR Part 2"]
+
+  child_protection:
+    name: "Child Protection"
+    description: "Detection of grooming, CSAM, and child exploitation content"
+    compliance: ["COPPA", "CSAM Laws"]
+
+  encoding_evasion:
+    name: "Encoding Evasion"
+    description: "Filter bypass attempts using various encoding and obfuscation techniques"
+    owasp_reference: "LLM01:2025"
+
+  data_exfil:
+    name: "Data Exfiltration"
+    description: "Attempts to extract sensitive data, databases, or system information"
+    owasp_reference: ["LLM06:2025", "LLM10:2025"]
+
+  harmful_content:
+    name: "Harmful Content"
+    description: "Requests for violent, illegal, or dangerous content"
+    owasp_reference: "LLM05:2025"
