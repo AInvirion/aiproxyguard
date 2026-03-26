@@ -40,6 +40,21 @@ docker run -d \
   ovalenzuela/aiproxyguard:latest
 ```
 
+### With Fleet Registration
+
+Connect to the control plane for automatic signature updates and fleet management:
+
+```bash
+docker run -d \
+  --name aiproxyguard \
+  -p 8080:8080 \
+  -e AIPROXYGUARD_CONTROL_PLANE_ENABLED=true \
+  -e AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com \
+  -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-api-key-here \
+  --restart=unless-stopped \
+  ovalenzuela/aiproxyguard:latest
+```
+
 ## Docker Compose
 
 ```yaml
@@ -52,6 +67,11 @@ services:
       - "8080:8080"
     volumes:
       - ./config.yaml:/etc/aiproxyguard/config.yaml:ro
+    environment:
+      # Fleet registration (optional)
+      - AIPROXYGUARD_CONTROL_PLANE_ENABLED=true
+      - AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com
+      - AIPROXYGUARD_CONTROL_PLANE_API_KEY=${AIPROXYGUARD_API_KEY}  # Set in .env file
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
@@ -186,10 +206,13 @@ services:
   - name: proxy
     # ...
     envs:
-      - key: SCANNER_ENABLED
+      - key: AIPROXYGUARD_CONTROL_PLANE_ENABLED
         value: "true"
-      - key: POLICY_DEFAULT_ACTION
-        value: "block"
+      - key: AIPROXYGUARD_CONTROL_PLANE_URL
+        value: "https://aiproxyguard.com"
+      - key: AIPROXYGUARD_CONTROL_PLANE_API_KEY
+        type: SECRET
+        value: "your-api-key-here"
 ```
 
 **Option B: Build from Repo with Config**

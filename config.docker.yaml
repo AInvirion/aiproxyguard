@@ -60,7 +60,7 @@ logging:
 
 control_plane:
   enabled: ${AIPROXYGUARD_CONTROL_PLANE_ENABLED:-false}
-  url: "${AIPROXYGUARD_CONTROL_PLANE_URL:-}"
+  url: "${AIPROXYGUARD_CONTROL_PLANE_URL:-https://aiproxyguard.com}"
   api_key: "${AIPROXYGUARD_CONTROL_PLANE_API_KEY:-}"
   heartbeat_interval: 60
   sync_signatures: true

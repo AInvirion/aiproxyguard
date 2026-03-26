@@ -106,14 +106,14 @@ identity:
   trust_xff: false           # Trust X-Forwarded-For for IP resolution
   hash_token: true           # Hash tokens for privacy
 
-# Control plane (optional)
+# Control plane - fleet registration and management
 control_plane:
-  enabled: false
-  url: "${CONTROL_PLANE_URL:-https://api.aiproxyguard.com}"
-  api_key: "${CONTROL_PLANE_API_KEY}"
-  heartbeat_interval: 60
-  sync_signatures: true
-  report_telemetry: true
+  enabled: false                                              # Enable fleet registration
+  url: "${AIPROXYGUARD_CONTROL_PLANE_URL:-https://aiproxyguard.com}"
+  api_key: "${AIPROXYGUARD_CONTROL_PLANE_API_KEY}"           # Required when enabled
+  heartbeat_interval: 60                                      # Seconds between heartbeats
+  sync_signatures: true                                       # Auto-sync signatures from control plane
+  report_telemetry: true                                      # Report detection metrics
 
 # TLS interception (optional, advanced)
 tls:
@@ -162,6 +162,57 @@ Use `open` for availability-focused deployments, `closed` for security-focused.
 | `passthrough` | Forward response chunks immediately, scan asynchronously |
 | `buffered` | Buffer N chars before scanning, then stream |
 | `full` | Buffer entire response, scan, then return |
+
+## Control Plane (Fleet Registration)
+
+The control plane enables centralized fleet management, automatic signature updates, and telemetry reporting.
+
+### Enabling Fleet Registration
+
+**Option 1: Environment Variables (Recommended for Docker)**
+
+```bash
+docker run -d -p 8080:8080 \
+  -e AIPROXYGUARD_CONTROL_PLANE_ENABLED=true \
+  -e AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com \
+  -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-api-key-here \
+  ovalenzuela/aiproxyguard:latest
+```
+
+**Option 2: Config File**
+
+```yaml
+control_plane:
+  enabled: true
+  url: "https://aiproxyguard.com"
+  api_key: "your-api-key-here"
+  heartbeat_interval: 60
+  sync_signatures: true
+  report_telemetry: true
+```
+
+### Control Plane Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `enabled` | Enable fleet registration | `false` |
+| `url` | Control plane API URL | `https://aiproxyguard.com` |
+| `api_key` | Your API key (required when enabled) | - |
+| `heartbeat_interval` | Seconds between heartbeats | `60` |
+| `sync_signatures` | Auto-download new signatures | `true` |
+| `report_telemetry` | Report detection events | `true` |
+
+### What Happens When Enabled
+
+1. **Registration**: On startup, the proxy registers with the fleet, sending instance metadata (hostname, OS, version)
+2. **Heartbeats**: Periodic heartbeats report status and check for updates
+3. **Signature Sync**: New detection signatures are automatically downloaded and hot-reloaded
+4. **Policy Sync**: Policy changes from the control plane are applied without restart
+5. **Telemetry**: Detection events (counts, categories) are reported for analytics
+
+### Getting an API Key
+
+Sign up at [aiproxyguard.com](https://aiproxyguard.com) to get your API key.
 
 ## Docker Volume Mounts
 

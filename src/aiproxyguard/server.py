@@ -437,7 +437,7 @@ def create_app(config: Config) -> web.Application:
 
     app["signatures"] = signatures
     app["router"] = Router(config.upstreams)
-    app["scanner"] = ScannerPipeline(config.scanner, signatures)
+    app["scanner"] = ScannerPipeline(config.scanner, signatures, config.ml_classifier)
     app["policy"] = PolicyEngine(
         default_action=config.policy.default_action,
         categories={
@@ -530,7 +530,7 @@ async def _run_tls_server(config: Config) -> None:
         from aiproxyguard.signatures.models import SignatureSet
         signatures = SignatureSet(signatures=[])
 
-    scanner = ScannerPipeline(config.scanner, signatures)
+    scanner = ScannerPipeline(config.scanner, signatures, config.ml_classifier)
     policy = PolicyEngine(
         default_action=config.policy.default_action,
         categories={

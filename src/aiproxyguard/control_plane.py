@@ -395,9 +395,15 @@ class ControlPlaneClient:
             # Apply via callback
             if self._signature_update_callback:
                 self._signature_update_callback(new_signatures)
-                self._last_signature_version = manifest_version
+                # Store the latest bundle version (matches heartbeat response format)
+                # This prevents unnecessary re-syncs when versions are compared
+                latest_bundle_version = max(
+                    (b.get("version", "") for b in bundle_contents),
+                    default=manifest_version,
+                )
+                self._last_signature_version = latest_bundle_version
                 logger.info(
-                    f"Scanner reloaded with new signatures (version {manifest_version})"
+                    f"Scanner reloaded with new signatures (version {latest_bundle_version})"
                 )
             else:
                 logger.warning("No signature update callback registered")

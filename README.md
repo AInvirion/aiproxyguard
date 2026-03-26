@@ -96,6 +96,40 @@ export ANTHROPIC_BASE_URL="http://localhost:8080/anthropic/v1"
 
 Additional signature categories available via control plane subscription.
 
+## Fleet Registration (Control Plane)
+
+Connect your instance to the AIProxyGuard control plane for fleet management, automatic signature updates, and telemetry.
+
+### Via Environment Variables (Recommended)
+
+```bash
+docker run -d -p 8080:8080 \
+  -e AIPROXYGUARD_CONTROL_PLANE_ENABLED=true \
+  -e AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com \
+  -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-api-key-here \
+  ovalenzuela/aiproxyguard:latest
+```
+
+### Via Config File
+
+```yaml
+control_plane:
+  enabled: true
+  url: "https://aiproxyguard.com"
+  api_key: "your-api-key-here"
+  heartbeat_interval: 60
+  sync_signatures: true      # Auto-update signatures from control plane
+  report_telemetry: true     # Report detection metrics
+```
+
+When enabled, the proxy will:
+1. Register with the fleet on startup
+2. Send periodic heartbeats with status
+3. Sync new signatures automatically
+4. Report detection telemetry (if enabled)
+
+Get your API key at [aiproxyguard.com](https://aiproxyguard.com).
+
 ## Configuration
 
 Create a `config.yaml`:

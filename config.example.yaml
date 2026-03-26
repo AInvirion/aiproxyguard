@@ -103,13 +103,14 @@ identity:
 
 # Control plane integration (optional)
 # Connect to hosted control plane for fleet management and signature sync
+# Get your API key at https://aiproxyguard.com
 control_plane:
   enabled: false
-  url: "${CONTROL_PLANE_URL:-https://api.aiproxyguard.com}"
-  api_key: "${CONTROL_PLANE_API_KEY}"
-  heartbeat_interval: 60
-  sync_signatures: true
-  report_telemetry: true
+  url: "${AIPROXYGUARD_CONTROL_PLANE_URL:-https://aiproxyguard.com}"
+  api_key: "${AIPROXYGUARD_CONTROL_PLANE_API_KEY}"
+  heartbeat_interval: 60      # Seconds between heartbeats
+  sync_signatures: true       # Auto-download new signatures
+  report_telemetry: true      # Report detection metrics
 
 # TLS interception (advanced, optional)
 # Enables MITM proxy for inspecting HTTPS traffic
