@@ -14,4 +14,8 @@
 
 """AIProxyGuard - LLM Security Proxy with Prompt Injection Detection."""
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version
+    __version__ = version("aiproxyguard")
+except Exception:
+    __version__ = "0.0.0"  # Fallback for development
