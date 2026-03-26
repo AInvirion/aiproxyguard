@@ -74,6 +74,8 @@ def parse_signatures_from_bundles(bundles: list[dict[str, Any]]) -> SignatureSet
     """Parse signatures from control plane bundle format.
 
     Each bundle contains a 'content' field with YAML signature definitions.
+    The content may contain multiple concatenated files (marked with # === filename ===)
+    which have duplicate 'signatures:' keys that YAML would otherwise overwrite.
 
     Args:
         bundles: List of bundle dicts from control plane API.
@@ -81,12 +83,42 @@ def parse_signatures_from_bundles(bundles: list[dict[str, Any]]) -> SignatureSet
     Returns:
         SignatureSet containing all parsed signatures from all bundles.
     """
+    import re
+
     signatures: list[Signature] = []
     for bundle in bundles:
         content = bundle.get("content", "")
-        if content:
-            data = yaml.safe_load(content)
-            if data and "signatures" in data:
-                for sig_data in data["signatures"]:
-                    signatures.append(_parse_signature(sig_data))
+        if not content:
+            continue
+
+        # Check if content has section markers (concatenated files)
+        # Pattern: # === path/to/file.yaml ===
+        if re.search(r"^# === .+\.yaml ===", content, re.MULTILINE):
+            # Split by section markers and parse each section
+            sections = re.split(r"^# === .+\.yaml ===\n?", content, flags=re.MULTILINE)
+            for section in sections:
+                section = section.strip()
+                if not section:
+                    continue
+                try:
+                    data = yaml.safe_load(section)
+                    if data and "signatures" in data:
+                        for sig_data in data["signatures"]:
+                            signatures.append(_parse_signature(sig_data))
+                except yaml.YAMLError:
+                    continue
+        else:
+            # Single document - try safe_load_all for --- separated docs
+            try:
+                for data in yaml.safe_load_all(content):
+                    if data and "signatures" in data:
+                        for sig_data in data["signatures"]:
+                            signatures.append(_parse_signature(sig_data))
+            except yaml.YAMLError:
+                # Fall back to single document
+                data = yaml.safe_load(content)
+                if data and "signatures" in data:
+                    for sig_data in data["signatures"]:
+                        signatures.append(_parse_signature(sig_data))
+
     return SignatureSet(signatures=signatures)
