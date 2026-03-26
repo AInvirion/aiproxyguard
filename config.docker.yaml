@@ -15,11 +15,21 @@ upstreams:
     url: "https://api.anthropic.com"
     timeout: 60s
     auth_header: "x-api-key"
+  ollama:
+    url: "${OLLAMA_BASE_URL:-http://localhost:11434}"
+    timeout: 120s
 
 scanner:
   enabled: true
   regex: true
   heuristics: true
+  ml_classifier: true
+
+ml_classifier:
+  enabled: true
+  model_path: "/app/models/prompt-classifier-v1/model.joblib"
+  threshold: 0.7
+  action: "block"
 
 policy:
   default_action: "block"
@@ -49,4 +59,9 @@ logging:
   format: "json"
 
 control_plane:
-  enabled: false
+  enabled: ${AIPROXYGUARD_CONTROL_PLANE_ENABLED:-false}
+  url: "${AIPROXYGUARD_CONTROL_PLANE_URL:-}"
+  api_key: "${AIPROXYGUARD_CONTROL_PLANE_API_KEY:-}"
+  heartbeat_interval: 60
+  sync_signatures: true
+  report_telemetry: true
