@@ -1,4 +1,4 @@
-# Dockerfile
+# Dockerfile - Optimized for multi-platform builds
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
@@ -8,12 +8,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy source for build
+# Copy only dependency files first (better caching)
 COPY pyproject.toml README.md ./
+
+# Create minimal src structure for pip install
+RUN mkdir -p src/aiproxyguard && \
+    echo '__version__ = "0.0.0"' > src/aiproxyguard/__init__.py
+
+# Install dependencies with pip cache mount (much faster rebuilds)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir ".[ml]"
+
+# Now copy actual source
 COPY src/ ./src/
 
-# Install Python dependencies with ML support
-RUN pip install --no-cache-dir ".[ml]"
+# Reinstall to get correct version
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir ".[ml]"
 
 FROM python:3.11-slim
 

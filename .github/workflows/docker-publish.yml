@@ -11,20 +11,30 @@ env:
   REGISTRY_DOCKERHUB: docker.io
   REGISTRY_GHCR: ghcr.io
   IMAGE_NAME_DOCKERHUB: ovalenzuela/aiproxyguard
-  # Must be lowercase for Docker - github.repository may have uppercase
   IMAGE_NAME_GHCR: ainvirion/aiproxyguard
 
 jobs:
-  build-and-push:
-    name: Build and Push Docker Images
-    runs-on: ubuntu-latest
+  # Build each platform in parallel
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm  # Native ARM runner (faster than QEMU)
+            suffix: arm64
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Python for signature verification
         uses: actions/setup-python@v5
@@ -34,7 +44,7 @@ jobs:
       - name: Install signature verification dependencies
         run: pip install cryptography
 
-      - name: Fetch latest signatures from aiproxyguard-signatures
+      - name: Fetch latest signatures
         run: |
           chmod +x scripts/fetch-signatures.sh
           ./scripts/fetch-signatures.sh
@@ -43,32 +53,8 @@ jobs:
           TIER: free
           GH_TOKEN: ${{ secrets.SIGNATURES_GITHUB_TOKEN }}
 
-      - name: Verify signatures fetched
-        run: |
-          echo "Signatures directory contents:"
-          ls -la signatures/
-          cat signatures/.version
-          echo "Signature count:"
-          grep -c "id:" signatures/*.yaml || echo "No signatures found"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -83,63 +69,156 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ github.ref_name }}
-          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}
+          tags: |
+            ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${{ steps.version.outputs.version }}-${{ matrix.suffix }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ steps.version.outputs.version }}-${{ matrix.suffix }}
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
+          provenance: false
 
-      - name: Update Docker Hub description
-        uses: peter-evans/dockerhub-description@v4
-        continue-on-error: true  # Don't fail the build if this step fails
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.IMAGE_NAME_DOCKERHUB }}
-          readme-filepath: ./README.md
-          short-description: "LLM Security Proxy with Prompt Injection Detection"
+          name: digests-${{ matrix.suffix }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
-  verify:
-    name: Verify Published Images
+  # Merge platform images into multi-arch manifest
+  merge:
+    name: Create Multi-Arch Manifest
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: build
     permissions:
-      packages: read
-    strategy:
-      matrix:
-        registry:
-          - docker.io/ovalenzuela/aiproxyguard
-          - ghcr.io/ainvirion/aiproxyguard
+      contents: read
+      packages: write
 
     steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
-        if: contains(matrix.registry, 'docker.io')
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GitHub Container Registry
-        if: contains(matrix.registry, 'ghcr.io')
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "major=${VERSION%%.*}" >> $GITHUB_OUTPUT
+            MINOR="${VERSION%.*}"
+            echo "minor=$MINOR" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create manifest for Docker Hub
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          docker buildx imagetools create -t ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION} \
+            ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION}-amd64 \
+            ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION}-arm64
+
+          # Also tag as latest for releases
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            docker buildx imagetools create -t ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:latest \
+              ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION}-amd64 \
+              ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION}-arm64
+          fi
+
+          # Tag major.minor
+          if [[ -n "${{ steps.version.outputs.minor }}" ]]; then
+            docker buildx imagetools create -t ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${{ steps.version.outputs.minor }} \
+              ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION}-amd64 \
+              ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${VERSION}-arm64
+          fi
+
+      - name: Create manifest for GHCR
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION} \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION}-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION}-arm64
+
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
+              ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION}-amd64 \
+              ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION}-arm64
+          fi
+
+  verify:
+    name: Verify Published Images
+    runs-on: ubuntu-latest
+    needs: merge
+    permissions:
+      packages: read
+
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev" >> $GITHUB_OUTPUT
+          fi
+
       - name: Pull and test image
         run: |
-          docker pull ${{ matrix.registry }}:latest
-          docker run --rm -d --name verify-test -p 8080:8080 ${{ matrix.registry }}:latest
+          docker pull ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${{ steps.version.outputs.version }}
+          docker run --rm -d --name verify-test -p 8080:8080 ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${{ steps.version.outputs.version }}
           sleep 5
-          # Show container status and logs for debugging
           docker ps -a
           docker logs verify-test || true
-          # Test health endpoint
           curl -f http://localhost:8080/healthz
           docker stop verify-test
+
+      - name: Inspect manifest
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_DOCKERHUB }}/${{ env.IMAGE_NAME_DOCKERHUB }}:${{ steps.version.outputs.version }}
