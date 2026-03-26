@@ -16,8 +16,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from aiproxyguard.scanner.ml.metrics import (
     MLClassifierMetrics,
     get_ml_metrics,

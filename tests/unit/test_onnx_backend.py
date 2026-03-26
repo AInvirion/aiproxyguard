@@ -21,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -29,7 +29,7 @@ import pytest
 def onnxruntime_available() -> bool:
     """Check if onnxruntime is available."""
     try:
-        import onnxruntime
+        import onnxruntime  # noqa: F401
         return True
     except ImportError:
         return False

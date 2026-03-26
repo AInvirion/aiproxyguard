@@ -16,10 +16,8 @@
 
 from __future__ import annotations
 
-import sys
 import tempfile
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -319,7 +317,6 @@ class TestLoadFromBytes:
         """Test loading model from bytes."""
         try:
             import joblib
-            import numpy as np
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.linear_model import LogisticRegression
         except ImportError:

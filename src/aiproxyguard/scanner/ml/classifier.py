@@ -200,11 +200,10 @@ class MLClassifier:
         Returns:
             True if loading was successful.
         """
-        import io
         import tempfile
 
         try:
-            import joblib
+            import joblib  # noqa: F401 - needed for tempfile suffix check
         except ImportError:
             logger.warning("joblib not installed, cannot load model from bytes")
             return False

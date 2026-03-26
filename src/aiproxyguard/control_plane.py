@@ -31,7 +31,6 @@ from aiproxyguard.signatures.verifier import ManifestVerifier, get_verifier
 if TYPE_CHECKING:
     from aiproxyguard.config import ControlPlaneConfig
     from aiproxyguard.signatures.models import SignatureSet
-    from aiproxyguard.scanner.ml.license import License
 
 logger = logging.getLogger(__name__)
 

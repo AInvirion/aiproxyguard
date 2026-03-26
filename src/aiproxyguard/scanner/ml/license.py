@@ -269,7 +269,7 @@ def decrypt_model(encrypted_data: bytes, dek: bytes) -> bytes:
         raise ValueError("Model integrity check failed")
 
     logger.info(
-        f"Model decrypted successfully",
+        "Model decrypted successfully",
         extra={
             "model_id": header.model_id,
             "version": header.version,
