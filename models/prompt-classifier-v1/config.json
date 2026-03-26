@@ -1,0 +1,12 @@
+{
+  "model_id": "prompt-classifier-free",
+  "model_version": "1.0.1",
+  "categories": [
+    "prompt_injection",
+    "safe"
+  ],
+  "format": "sklearn-joblib",
+  "accuracy": 0.9097744360902256,
+  "f1_score": 0.9094638305164622,
+  "note": "Binary classification only - no jailbreak detection (use Pro tier for jailbreak)"
+}
