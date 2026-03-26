@@ -17,11 +17,12 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from aiproxyguard.config import ScannerConfig
+    from aiproxyguard.config import MLClassifierConfig, ScannerConfig
     from aiproxyguard.signatures.models import SignatureSet
 from aiproxyguard.scanner.regex import RegexScanner
 from aiproxyguard.scanner.heuristics import HeuristicsScanner
 from aiproxyguard.scanner.response import ResponseScanner, ResponseScanResult
+from aiproxyguard.scanner.ml import MLClassifier
 
 
 @dataclass
@@ -35,18 +36,26 @@ class ScanResult:
 
 
 class ScannerPipeline:
-    def __init__(self, config: ScannerConfig, signatures: SignatureSet) -> None:
+    def __init__(
+        self,
+        config: ScannerConfig,
+        signatures: SignatureSet,
+        ml_config: MLClassifierConfig | None = None,
+    ) -> None:
         self._config = config
         self._signatures = signatures
         self._regex_scanner: RegexScanner | None = None
         self._heuristics_scanner: HeuristicsScanner | None = None
         self._response_scanner: ResponseScanner | None = None
+        self._ml_classifier: MLClassifier | None = None
         if config.regex:
             self._regex_scanner = RegexScanner(signatures)
         if config.heuristics:
             self._heuristics_scanner = HeuristicsScanner()
         if config.response.enabled:
             self._response_scanner = ResponseScanner(config.response, signatures)
+        if config.ml_classifier and ml_config is not None:
+            self._ml_classifier = MLClassifier(ml_config)
 
     def scan(self, text: str) -> ScanResult:
         if not self._config.enabled:
@@ -80,6 +89,20 @@ class ScannerPipeline:
                 if score > best_score:
                     best_score = score
                     best = ("warn", "encoding_evasion", None, match.description, match.confidence)
+
+        if self._ml_classifier and self._ml_classifier.is_available():
+            for match in self._ml_classifier.predict(text):
+                # Skip non-threat categories (e.g., "safe", "benign")
+                if match.category.lower() in ("safe", "benign", "normal", "clean"):
+                    continue
+                detail = f"ml:{match.model_id}:{match.category}:{match.confidence:.2f}"
+                all_details.append(detail)
+                # Use configured action from MLClassifierConfig
+                ml_action = self._ml_classifier._config.action
+                score = (action_priority.get(ml_action, 0), match.confidence)
+                if score > best_score:
+                    best_score = score
+                    best = (ml_action, match.category, match.model_id, detail, match.confidence)
 
         if best is None:
             return ScanResult(action="allow")
@@ -115,9 +138,22 @@ class ScannerPipeline:
         """Get the response scanner instance."""
         return self._response_scanner
 
+    @property
+    def ml_classifier(self) -> MLClassifier | None:
+        """Get the ML classifier instance."""
+        return self._ml_classifier
+
     def reload(self, signatures: SignatureSet) -> None:
         self._signatures = signatures
         if self._regex_scanner:
             self._regex_scanner.reload(signatures)
         if self._response_scanner:
             self._response_scanner.reload(signatures)
+        # ML classifier reload is handled separately via reload_ml_model
+
+    def reload_ml_model(self, model_path: str | None = None) -> None:
+        """Reload the ML model, optionally from a new path."""
+        if self._ml_classifier:
+            from pathlib import Path
+            path = Path(model_path) if model_path else None
+            self._ml_classifier.reload(path)

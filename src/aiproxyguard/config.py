@@ -54,6 +54,16 @@ class ResponseScannerConfig:
 
 
 @dataclass
+class MLClassifierConfig:
+    """ML classifier configuration."""
+
+    enabled: bool = False
+    model_path: str | None = None  # Path to the model file (.joblib, .pkl, .onnx)
+    threshold: float = 0.7  # Minimum confidence to trigger detection
+    action: str = "block"  # Action when ML detects threat: block, warn, log
+
+
+@dataclass
 class ScannerConfig:
     """Scanner configuration."""
 
@@ -159,6 +169,7 @@ class Config:
     server: ServerConfig
     upstreams: dict[str, UpstreamConfig]
     scanner: ScannerConfig = field(default_factory=ScannerConfig)
+    ml_classifier: MLClassifierConfig = field(default_factory=MLClassifierConfig)
     policy: PolicyConfig = field(default_factory=PolicyConfig)
     signatures: SignatureConfig = field(default_factory=SignatureConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
@@ -181,6 +192,15 @@ def _substitute_env_vars(value: str) -> str:
         return os.environ.get(var_name, default if default is not None else "")
 
     return ENV_VAR_PATTERN.sub(replace, value)
+
+
+def _to_bool(value: Any, default: bool = False) -> bool:
+    """Convert value to boolean, handling string representations."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on")
+    return default
 
 
 def _process_value(value: Any) -> Any:
@@ -260,6 +280,14 @@ def load_config(path: str) -> Config:
         response=response_config,
     )
 
+    ml_classifier_data = data.get("ml_classifier", {})
+    ml_classifier = MLClassifierConfig(
+        enabled=ml_classifier_data.get("enabled", False),
+        model_path=ml_classifier_data.get("model_path"),
+        threshold=ml_classifier_data.get("threshold", 0.7),
+        action=ml_classifier_data.get("action", "block"),
+    )
+
     security_data = data.get("security", {})
     security = SecurityConfig(
         failure_mode=security_data.get("failure_mode", "open"),
@@ -305,12 +333,12 @@ def load_config(path: str) -> Config:
 
     control_plane_data = data.get("control_plane", {})
     control_plane = ControlPlaneConfig(
-        enabled=control_plane_data.get("enabled", False),
+        enabled=_to_bool(control_plane_data.get("enabled", False)),
         url=control_plane_data.get("url", ""),
         api_key=control_plane_data.get("api_key", ""),
         heartbeat_interval=control_plane_data.get("heartbeat_interval", 60),
-        sync_signatures=control_plane_data.get("sync_signatures", True),
-        report_telemetry=control_plane_data.get("report_telemetry", True),
+        sync_signatures=_to_bool(control_plane_data.get("sync_signatures", True), default=True),
+        report_telemetry=_to_bool(control_plane_data.get("report_telemetry", True), default=True),
         manifest_public_key=control_plane_data.get("manifest_public_key", ""),
     )
 
@@ -336,6 +364,7 @@ def load_config(path: str) -> Config:
         server=server,
         upstreams=upstreams,
         scanner=scanner,
+        ml_classifier=ml_classifier,
         policy=policy,
         signatures=signatures,
         security=security,
