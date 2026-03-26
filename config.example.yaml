@@ -33,12 +33,25 @@ scanner:
   enabled: true          # Master switch for all scanning
   regex: true            # Enable regex pattern matching
   heuristics: true       # Enable heuristic detection (base64, encoding tricks)
-  ml_classifier: false   # ML classifier (not yet implemented)
+  ml_classifier: false   # Enable ML-based classification (requires ml_classifier config below)
   response:              # Response scanning (detect sensitive data in LLM responses)
     enabled: false       # Set to true to scan responses
     mode: "buffered"     # "passthrough", "buffered", or "full"
     buffer_size: 1024    # Characters to buffer before scanning (buffered mode)
     categories: []       # Categories to scan for (empty = all)
+
+# ML Classifier settings (Pro tier feature)
+# Provides semantic classification using trained ML models
+ml_classifier:
+  enabled: false          # Set to true to enable ML classification
+  model_path: null        # Path to model file (.joblib, .pkl, or .onnx)
+  threshold: 0.7          # Minimum confidence to trigger detection (0.0-1.0)
+  action: "block"         # Action when ML detects threat: "allow", "log", "warn", "block"
+  # Example with model:
+  # enabled: true
+  # model_path: "/app/models/prompt-classifier-v1.joblib"
+  # threshold: 0.75
+  # action: "block"
 
 # Policy engine - controls what happens when threats are detected
 policy:

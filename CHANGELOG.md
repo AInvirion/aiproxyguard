@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- ML classifier module for semantic prompt classification (Phase 1)
+  - `MLClassifier` class with pluggable backend architecture
+  - `SklearnBackend` for scikit-learn models (.joblib, .pkl, .pickle)
+  - `MLClassifierConfig` for model path, threshold, and action settings
+  - Integration with `ScannerPipeline` for seamless detection
+  - Unit tests for classifier and sklearn backend (24 tests)
+- Model encryption and licensing (Phase 3)
+  - AES-256-GCM encryption for ML models
+  - Time-limited licenses with Ed25519 signatures
+  - License validation and model decryption in proxy
+  - Unit tests for license module (9 tests)
+- Proxy-cloud ML model sync (Phase 4)
+  - `ControlPlaneClient.sync_ml_model()` for automatic model download
+  - License caching with automatic refresh on expiration
+  - `MLClassifier.load_from_bytes()` for dynamic model loading
+  - Support for both encrypted and unencrypted models
+- ONNX Runtime backend for Enterprise tier (Phase 5)
+  - `ONNXBackend` for transformer models (.onnx)
+  - Automatic softmax normalization for logit outputs
+  - `load_from_bytes()` for dynamic model loading
+  - Unit tests with graceful handling when onnxruntime not installed (7 tests)
+- Production hardening with metrics (Phase 6)
+  - `MLClassifierMetrics` class for Prometheus-compatible metrics
+  - Prediction counters by category and action (block/allow)
+  - Model load tracking with success/failure counts
+  - License refresh monitoring with expiration countdown
+  - Latency percentiles (p50, p90, p99) with rolling window
+  - `MLClassifier.health_check()` for monitoring integration
+  - Unit tests for metrics module (15 tests)
+
 ## [0.2.12] - 2026-03-25
 
 ### Added

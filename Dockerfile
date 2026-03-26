@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir .
+# Install Python dependencies with ML support
+RUN pip install --no-cache-dir ".[ml]"
 
 FROM python:3.11-slim
 
@@ -26,6 +26,7 @@ COPY --from=builder /usr/local/bin/aiproxyguard /usr/local/bin/aiproxyguard
 # Copy application
 COPY src/ ./src/
 COPY signatures/ ./signatures/
+COPY models/ ./models/
 
 # Create config directory and copy default config
 RUN mkdir -p /etc/aiproxyguard
