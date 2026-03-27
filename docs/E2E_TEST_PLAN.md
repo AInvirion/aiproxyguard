@@ -239,32 +239,32 @@
 ## Test Execution Checklist
 
 ### Phase 1: Core Functionality
-- [ ] 1.1 Fresh registration with valid key
-- [ ] 2.1 Free tier signature access
-- [ ] 2.1 Enterprise tier signature access
-- [ ] 3.2 Encrypted bundle decryption
-- [ ] 4.3 Policy action: block
-- [ ] 7.1 Prompt injection detection
+- [x] 1.1 Fresh registration with valid key - PASS (2026-03-27)
+- [x] 2.1 Free tier signature access - PASS (16 bundled signatures)
+- [x] 2.1 Enterprise tier signature access - PASS (65 signatures after sync)
+- [x] 3.2 Encrypted bundle decryption - PASS ("Content decrypted successfully")
+- [x] 4.3 Policy action: block - PASS (403 on injection)
+- [x] 7.1 Prompt injection detection - PASS (PI-001, PI-002, PI-003)
 
 ### Phase 2: Edge Cases
-- [ ] 1.1 Single-use key reuse (fail)
-- [ ] 1.1 Instance limit exceeded (fail)
-- [ ] 2.2 Tier upgrade
-- [ ] 3.3 License auto-refresh
-- [ ] 4.2 Policy update propagation
-- [ ] 5.2 Instance limits per tier
+- [ ] 1.1 Single-use key reuse (fail) - NOT TESTED (needs test key)
+- [x] 1.1 Instance limit exceeded (fail) - PASS (403 on limit)
+- [x] 2.2 Tier upgrade - PASS ("Account tier changed: free -> enterprise")
+- [ ] 3.3 License auto-refresh - NOT TESTED (needs 24h wait)
+- [x] 4.2 Policy update propagation - PASS ("Policy engine updated")
+- [x] 5.2 Instance limits per tier - PASS (enterprise: 15 instances)
 
 ### Phase 3: Resilience
-- [ ] 8.1 Start with no network
-- [ ] 8.1 Cloud goes down
-- [ ] 8.2 Invalid manifest signature
-- [ ] 3.3 Cached license after restart
+- [x] 8.1 Start with no network - PASS (16 bundled signatures)
+- [x] 8.1 Cloud goes down - PASS (falls back to bundled)
+- [ ] 8.2 Invalid manifest signature - NOT TESTED
+- [x] 3.3 Cached license after restart - PASS (30-day license cached)
 
 ### Phase 4: Production Readiness
-- [ ] 9.1 Telemetry reporting
-- [ ] 10.1 Multiple proxies same account
-- [ ] Full 24-hour soak test
-- [ ] Load test (X requests/sec)
+- [x] 9.1 Telemetry reporting - PASS (events buffered, flush on heartbeat)
+- [x] 10.1 Multiple proxies same account - PASS (3 proxies, all detect)
+- [ ] Full 24-hour soak test - NOT TESTED (requires extended duration)
+- [x] Load test - PASS (524 req/sec with detection)
 
 ---
 
