@@ -299,3 +299,68 @@ class TestControlPlaneClientWithMockedHTTP:
 
         assert client._heartbeat_task.cancelled()
         assert client._client is None
+
+    @pytest.mark.asyncio
+    async def test_register_with_retry_succeeds_on_first_attempt(self):
+        """Registration with retry should succeed on first attempt."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+
+        # Mock successful registration
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._register_with_retry(max_attempts=3)
+
+        assert client._registered is True
+        assert client._client.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_register_with_retry_retries_on_failure(self):
+        """Registration should retry on failure."""
+        import httpx
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+
+        # Mock failed registration (HTTP error)
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock(side_effect=httpx.HTTPError("Connection failed"))
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._register_with_retry(max_attempts=2)
+
+        # Should have tried twice
+        assert client._registered is False
+        assert client._client.post.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_loop_retries_registration(self):
+        """Heartbeat loop should retry registration if not registered."""
+        import asyncio
+
+        config = MockControlPlaneConfig(heartbeat_interval=0)  # No delay
+        client = ControlPlaneClient(config)
+        client._registered = False
+
+        # Mock HTTP client
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value={})
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        # Run heartbeat loop briefly
+        task = asyncio.create_task(client._heartbeat_loop())
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Should have been registered during heartbeat
+        assert client._registered is True
