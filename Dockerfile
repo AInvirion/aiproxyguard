@@ -36,8 +36,10 @@ COPY --from=builder /usr/local/bin/aiproxyguard /usr/local/bin/aiproxyguard
 
 # Copy application
 COPY src/ ./src/
-COPY signatures/ ./signatures/
 COPY models/ ./models/
+
+# Create signatures directory (will be populated at runtime from control plane)
+RUN mkdir -p /app/signatures
 
 # Create config directory and copy default config
 RUN mkdir -p /etc/aiproxyguard
