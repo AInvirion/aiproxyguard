@@ -116,6 +116,47 @@ def save_bundle_cache(
         return False
 
 
+def save_bundle_license(bundle_id: str, license_data: dict[str, Any]) -> bool:
+    """Update just the license for a cached bundle (for license refresh).
+
+    Args:
+        bundle_id: Unique bundle identifier
+        license_data: New license dict from API
+
+    Returns:
+        True if license was saved successfully
+    """
+    try:
+        cache_dir = get_cache_dir()
+        bundle_path = cache_dir / "bundles" / bundle_id
+
+        if not bundle_path.exists():
+            logger.debug(f"Bundle {bundle_id} not in cache, skipping license update")
+            return False
+
+        # Update license
+        license_file = bundle_path / "license.json"
+        license_file.write_text(json.dumps(license_data, indent=2))
+
+        # Update metadata
+        metadata_file = bundle_path / "metadata.json"
+        if metadata_file.exists():
+            metadata = json.loads(metadata_file.read_text())
+        else:
+            metadata = {"bundle_id": bundle_id}
+
+        metadata["expires_at"] = license_data.get("expires_at")
+        metadata["license_refreshed_at"] = datetime.now(timezone.utc).isoformat()
+        metadata_file.write_text(json.dumps(metadata, indent=2))
+
+        logger.debug(f"Refreshed license for cached bundle {bundle_id}")
+        return True
+
+    except Exception as e:
+        logger.warning(f"Failed to save license for {bundle_id}: {e}")
+        return False
+
+
 def load_bundle_cache(bundle_id: str) -> tuple[bytes, dict[str, Any]] | None:
     """Load cached bundle + license if available and not expired.
 

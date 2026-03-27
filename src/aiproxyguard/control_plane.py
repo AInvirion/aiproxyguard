@@ -276,9 +276,74 @@ class ControlPlaneClient:
                     f"Signature version changed: {self._last_signature_version!r} -> {server_signature_version!r}"
                 )
                 await self._fetch_and_apply_signatures()
+            else:
+                # Check for expiring licenses even if signature version unchanged
+                await self._refresh_expiring_licenses()
 
         except httpx.HTTPError as e:
             logger.warning(f"Heartbeat failed: {e}")
+
+    async def _refresh_expiring_licenses(self) -> None:
+        """Check for licenses expiring within 24 hours and refresh them.
+
+        This ensures the proxy always has valid licenses for encrypted bundles,
+        even if the signature version hasn't changed. On restart, the proxy
+        can still decrypt cached bundles with refreshed licenses.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        if not self._bundle_licenses:
+            return
+
+        now = datetime.now(timezone.utc)
+        refresh_threshold = timedelta(hours=24)
+
+        for bundle_id, license_data in list(self._bundle_licenses.items()):
+            expires_at_str = license_data.get("expires_at")
+            if not expires_at_str:
+                continue
+
+            try:
+                # Parse expiration timestamp
+                expires_at = datetime.fromisoformat(
+                    expires_at_str.replace("Z", "+00:00")
+                )
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+                time_remaining = expires_at - now
+
+                if time_remaining < refresh_threshold:
+                    hours_remaining = time_remaining.total_seconds() / 3600
+                    logger.info(
+                        f"License for bundle {bundle_id} expires in {hours_remaining:.1f} hours, refreshing..."
+                    )
+
+                    # Fetch new license
+                    try:
+                        response = await self.client.get(
+                            f"/api/v1/signatures/licenses/bundle/{bundle_id}"
+                        )
+                        response.raise_for_status()
+                        new_license = response.json()
+
+                        # Update cached license
+                        self._bundle_licenses[bundle_id] = new_license
+
+                        # Update cache file if caching is enabled
+                        from aiproxyguard.signatures.cache import save_bundle_license
+                        save_bundle_license(bundle_id, new_license)
+
+                        new_expires = new_license.get("expires_at", "unknown")
+                        logger.info(
+                            f"Refreshed license for bundle {bundle_id}, "
+                            f"new expiration: {new_expires}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to refresh license for {bundle_id}: {e}")
+
+            except Exception as e:
+                logger.debug(f"Error checking license expiration for {bundle_id}: {e}")
 
     async def _fetch_and_apply_policy(self) -> None:
         """Fetch active policy from control plane and apply it."""
