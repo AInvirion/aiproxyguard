@@ -528,8 +528,8 @@ class ControlPlaneClient:
             # Download encrypted content
             download_url = license_data.get("download_url")
             if download_url:
-                # External URL (CDN)
-                async with httpx.AsyncClient(timeout=60.0) as dl_client:
+                # External URL (CDN) - follow redirects for http->https
+                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as dl_client:
                     dl_response = await dl_client.get(download_url)
                     dl_response.raise_for_status()
                     encrypted_bytes = dl_response.content
