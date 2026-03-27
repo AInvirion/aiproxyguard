@@ -407,7 +407,7 @@ class ControlPlaneClient:
                 if not bundle_id:
                     continue
 
-                is_encrypted = bundle_info.get("encrypted", False)
+                is_encrypted = bundle_info.get("is_encrypted", False)
                 tier = bundle_info.get("tier", "free")
 
                 if is_encrypted:
@@ -512,8 +512,8 @@ class ControlPlaneClient:
 
         try:
             # Request license for this bundle
-            license_response = await self.client.post(
-                f"/api/v1/signatures/bundles/{bundle_id}/license"
+            license_response = await self.client.get(
+                f"/api/v1/signatures/licenses/bundle/{bundle_id}"
             )
             license_response.raise_for_status()
             license_data = license_response.json()
