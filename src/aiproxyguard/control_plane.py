@@ -30,6 +30,8 @@ from aiproxyguard.signatures.verifier import ManifestVerifier, get_verifier
 
 if TYPE_CHECKING:
     from aiproxyguard.config import ControlPlaneConfig
+    from aiproxyguard.crypto.license import License
+    from aiproxyguard.signatures.bundle import SignatureBundleSet
     from aiproxyguard.signatures.models import SignatureSet
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,9 @@ class ControlPlaneClient:
         self._manifest_verifier = manifest_verifier or get_verifier()
         self._cached_license: dict | None = None
         self._cached_license_model_id: str | None = None
+        # Signature bundle tracking
+        self._bundle_licenses: dict[str, dict] = {}  # bundle_id -> license_data
+        self._bundle_set: SignatureBundleSet | None = None
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -151,9 +156,23 @@ class ControlPlaneClient:
             return
 
         logger.info(f"Connecting to control plane at {self.config.url}")
-        await self._register()
+        # Attempt initial registration with retry
+        await self._register_with_retry()
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         logger.info("Control plane client started")
+
+    async def _register_with_retry(self, max_attempts: int = 3) -> None:
+        """Attempt registration with exponential backoff."""
+        base_delay = 1.0
+        for attempt in range(max_attempts):
+            await self._register()
+            if self._registered:
+                return
+            # Exponential backoff: 1s, 2s, 4s
+            delay = base_delay * (2 ** attempt)
+            logger.info(f"Registration failed, retrying in {delay}s (attempt {attempt + 1}/{max_attempts})")
+            await asyncio.sleep(delay)
+        logger.warning("Initial registration failed after retries; will retry in heartbeat loop")
 
     async def stop(self) -> None:
         """Stop the control plane client."""
@@ -200,6 +219,11 @@ class ControlPlaneClient:
         while True:
             try:
                 await asyncio.sleep(self.config.heartbeat_interval)
+                # Retry registration if not yet registered
+                if not self._registered:
+                    await self._register()
+                    if self._registered:
+                        logger.info("Registration succeeded on retry")
                 await self._send_heartbeat()
                 await self._flush_telemetry()
             except asyncio.CancelledError:
@@ -326,10 +350,24 @@ class ControlPlaneClient:
         }
 
     async def _fetch_and_apply_signatures(self) -> None:
-        """Fetch new signatures from control plane and hot-reload them."""
+        """Fetch new signatures from control plane and hot-reload them.
+
+        Supports both plain (free tier) and encrypted (paid tier) bundles.
+        Falls back to cached bundles if network is unavailable.
+        """
         if not self.config.sync_signatures:
             logger.debug("Signature sync disabled, skipping signature update")
             return
+
+        from aiproxyguard.signatures.cache import (
+            clear_expired_cache,
+            load_bundle_cache,
+            save_bundle_cache,
+        )
+        from aiproxyguard.signatures.loader import parse_bundles_to_bundle_set
+
+        # Clean up expired cache entries periodically
+        clear_expired_cache()
 
         try:
             # Fetch the signature manifest for the account's tier
@@ -360,42 +398,74 @@ class ControlPlaneClient:
                 f"(sequence={verification.sequence}) with {len(bundles)} bundles"
             )
 
-            # Fetch each bundle's content
+            # Fetch each bundle's content (with encryption support)
             bundle_contents = []
-            for bundle in bundles:
-                bundle_id = bundle.get("id")
+            licenses: dict[str, License] = {}
+
+            for bundle_info in bundles:
+                bundle_id = bundle_info.get("id")
                 if not bundle_id:
                     continue
 
-                try:
-                    bundle_response = await self.client.get(
-                        f"/api/v1/signatures/bundles/{bundle_id}"
+                is_encrypted = bundle_info.get("encrypted", False)
+                tier = bundle_info.get("tier", "free")
+
+                if is_encrypted:
+                    # Fetch encrypted bundle with license
+                    result = await self._fetch_encrypted_bundle(
+                        bundle_id, bundle_info, load_bundle_cache, save_bundle_cache
                     )
-                    bundle_response.raise_for_status()
-                    bundle_data = bundle_response.json()
-                    bundle_contents.append(bundle_data)
-                    logger.debug(f"Fetched signature bundle {bundle_id}")
-                except httpx.HTTPError as e:
-                    logger.warning(f"Failed to fetch bundle {bundle_id}: {e}")
+                    if result:
+                        bundle_contents.append(result["content_info"])
+                        if result.get("license"):
+                            licenses[bundle_id] = result["license"]
+                else:
+                    # Plain bundle (free tier)
+                    try:
+                        bundle_response = await self.client.get(
+                            f"/api/v1/signatures/bundles/{bundle_id}"
+                        )
+                        bundle_response.raise_for_status()
+                        bundle_data = bundle_response.json()
+                        bundle_contents.append({
+                            "bundle_id": bundle_id,
+                            "version": bundle_info.get("version", ""),
+                            "tier": tier,
+                            "content": bundle_data.get("content", ""),
+                            "is_encrypted": False,
+                        })
+                        logger.debug(f"Fetched plain bundle {bundle_id}")
+                    except httpx.HTTPError as e:
+                        logger.warning(f"Failed to fetch bundle {bundle_id}: {e}")
 
             if not bundle_contents:
                 logger.warning("No bundle contents fetched")
                 return
 
-            # Parse signatures from bundles
-            from aiproxyguard.signatures.loader import parse_signatures_from_bundles
+            # Parse into SignatureBundleSet with expiration tracking
+            self._bundle_set = parse_bundles_to_bundle_set(bundle_contents, licenses)
+            self._bundle_licenses = {bid: lic.__dict__ for bid, lic in licenses.items()}
 
-            new_signatures = parse_signatures_from_bundles(bundle_contents)
+            # Get active (non-expired) signatures
+            active_signatures = self._bundle_set.get_active_signatures()
 
             logger.info(
-                f"Parsed {len(new_signatures.signatures)} signatures from {len(bundle_contents)} bundles"
+                f"Parsed {self._bundle_set.total_signatures} signatures from "
+                f"{len(bundle_contents)} bundles "
+                f"({self._bundle_set.active_signatures_count} active)"
             )
+
+            # Warn about expiring bundles
+            expiring_soon = self._bundle_set.get_expiring_soon(within_hours=24)
+            for bundle in expiring_soon:
+                logger.warning(
+                    f"Bundle {bundle.bundle_id} expires in "
+                    f"{bundle.time_until_expiry / 3600:.1f} hours"
+                )
 
             # Apply via callback
             if self._signature_update_callback:
-                self._signature_update_callback(new_signatures)
-                # Store the latest bundle version (matches heartbeat response format)
-                # This prevents unnecessary re-syncs when versions are compared
+                self._signature_update_callback(active_signatures)
                 latest_bundle_version = max(
                     (b.get("version", "") for b in bundle_contents),
                     default=manifest_version,
@@ -409,8 +479,171 @@ class ControlPlaneClient:
 
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch signatures: {e}")
+            # Try to load from cache on network failure
+            await self._load_signatures_from_cache()
         except Exception as e:
             logger.error(f"Failed to parse/apply signatures: {e}")
+
+    async def _fetch_encrypted_bundle(
+        self,
+        bundle_id: str,
+        bundle_info: dict,
+        load_cache_fn,
+        save_cache_fn,
+    ) -> dict | None:
+        """Fetch an encrypted bundle with license, with cache fallback.
+
+        Args:
+            bundle_id: Bundle identifier
+            bundle_info: Bundle metadata from manifest
+            load_cache_fn: Function to load from cache
+            save_cache_fn: Function to save to cache
+
+        Returns:
+            Dict with 'content_info' and 'license', or None on failure
+        """
+        from aiproxyguard.crypto.license import (
+            decrypt_content,
+            is_license_valid,
+            parse_license,
+        )
+
+        public_key = getattr(self.config, "manifest_public_key", "")
+
+        try:
+            # Request license for this bundle
+            license_response = await self.client.post(
+                f"/api/v1/signatures/bundles/{bundle_id}/license"
+            )
+            license_response.raise_for_status()
+            license_data = license_response.json()
+
+            # Verify license
+            license = parse_license(license_data)
+            valid, reason = is_license_valid(license, public_key, license_data)
+            if not valid:
+                logger.error(f"Invalid license for {bundle_id}: {reason}")
+                return None
+
+            # Download encrypted content
+            download_url = license_data.get("download_url")
+            if download_url:
+                # External URL (CDN)
+                async with httpx.AsyncClient(timeout=60.0) as dl_client:
+                    dl_response = await dl_client.get(download_url)
+                    dl_response.raise_for_status()
+                    encrypted_bytes = dl_response.content
+            else:
+                # Fallback to API endpoint
+                content_response = await self.client.get(
+                    f"/api/v1/signatures/bundles/{bundle_id}/content"
+                )
+                content_response.raise_for_status()
+                encrypted_bytes = content_response.content
+
+            # Decrypt
+            decrypted = decrypt_content(
+                encrypted_bytes,
+                license.dek,
+                "aiproxyguard-encrypted-bundle-v1",
+            )
+
+            # Cache for offline use
+            save_cache_fn(bundle_id, encrypted_bytes, license_data)
+
+            logger.debug(f"Fetched encrypted bundle {bundle_id}")
+
+            return {
+                "license": license,
+                "content_info": {
+                    "bundle_id": bundle_id,
+                    "version": bundle_info.get("version", ""),
+                    "tier": bundle_info.get("tier", ""),
+                    "content": decrypted.decode("utf-8"),
+                    "is_encrypted": True,
+                },
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch encrypted bundle {bundle_id}: {e}")
+
+            # Try cache fallback
+            cached = load_cache_fn(bundle_id)
+            if cached:
+                encrypted_bytes, license_data = cached
+                try:
+                    license = parse_license(license_data)
+                    decrypted = decrypt_content(
+                        encrypted_bytes,
+                        license.dek,
+                        "aiproxyguard-encrypted-bundle-v1",
+                    )
+                    logger.info(f"Loaded {bundle_id} from cache (expires {license.expires_at})")
+                    return {
+                        "license": license,
+                        "content_info": {
+                            "bundle_id": bundle_id,
+                            "version": license_data.get("bundle_version", ""),
+                            "tier": bundle_info.get("tier", ""),
+                            "content": decrypted.decode("utf-8"),
+                            "is_encrypted": True,
+                        },
+                    }
+                except Exception as cache_err:
+                    logger.error(f"Failed to load {bundle_id} from cache: {cache_err}")
+
+            return None
+
+    async def _load_signatures_from_cache(self) -> None:
+        """Load all signatures from cache (offline mode)."""
+        from aiproxyguard.crypto.license import decrypt_content, parse_license
+        from aiproxyguard.signatures.cache import list_cached_bundles, load_bundle_cache
+        from aiproxyguard.signatures.loader import parse_bundles_to_bundle_set
+
+        cached_ids = list_cached_bundles()
+        if not cached_ids:
+            logger.warning("No cached bundles available for offline mode")
+            return
+
+        bundle_contents = []
+        licenses: dict[str, License] = {}
+
+        for bundle_id in cached_ids:
+            cached = load_bundle_cache(bundle_id)
+            if not cached:
+                continue
+
+            encrypted_bytes, license_data = cached
+            try:
+                license = parse_license(license_data)
+                decrypted = decrypt_content(
+                    encrypted_bytes,
+                    license.dek,
+                    "aiproxyguard-encrypted-bundle-v1",
+                )
+                bundle_contents.append({
+                    "bundle_id": bundle_id,
+                    "version": license_data.get("bundle_version", ""),
+                    "tier": license_data.get("tier", "unknown"),
+                    "content": decrypted.decode("utf-8"),
+                    "is_encrypted": True,
+                })
+                licenses[bundle_id] = license
+                logger.info(f"Loaded cached bundle {bundle_id}")
+            except Exception as e:
+                logger.error(f"Failed to decrypt cached bundle {bundle_id}: {e}")
+
+        if bundle_contents:
+            self._bundle_set = parse_bundles_to_bundle_set(bundle_contents, licenses)
+            active_signatures = self._bundle_set.get_active_signatures()
+
+            if self._signature_update_callback:
+                self._signature_update_callback(active_signatures)
+
+            logger.info(
+                f"Offline mode: loaded {len(bundle_contents)} bundles "
+                f"({self._bundle_set.active_signatures_count} active signatures)"
+            )
 
     async def report_detection(
         self,

@@ -13,10 +13,22 @@
 # limitations under the License.
 
 from __future__ import annotations
+
+import logging
+import re
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
 import yaml
+
 from aiproxyguard.signatures.models import Signature, SignatureSet
+
+if TYPE_CHECKING:
+    from aiproxyguard.crypto.license import License
+    from aiproxyguard.signatures.bundle import SignatureBundle, SignatureBundleSet
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_signature(data: dict[str, Any]) -> Signature:
@@ -83,8 +95,6 @@ def parse_signatures_from_bundles(bundles: list[dict[str, Any]]) -> SignatureSet
     Returns:
         SignatureSet containing all parsed signatures from all bundles.
     """
-    import re
-
     signatures: list[Signature] = []
     for bundle in bundles:
         content = bundle.get("content", "")
@@ -122,3 +132,106 @@ def parse_signatures_from_bundles(bundles: list[dict[str, Any]]) -> SignatureSet
                         signatures.append(_parse_signature(sig_data))
 
     return SignatureSet(signatures=signatures)
+
+
+def _parse_yaml_content(content: str) -> list[Signature]:
+    """Parse YAML content that may be concatenated or multi-document.
+
+    Args:
+        content: YAML string content
+
+    Returns:
+        List of parsed Signature objects
+    """
+    signatures: list[Signature] = []
+
+    # Check if content has section markers (concatenated files)
+    if re.search(r"^# === .+\.yaml ===", content, re.MULTILINE):
+        sections = re.split(r"^# === .+\.yaml ===\n?", content, flags=re.MULTILINE)
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
+            try:
+                data = yaml.safe_load(section)
+                if data and "signatures" in data:
+                    for sig_data in data["signatures"]:
+                        signatures.append(_parse_signature(sig_data))
+            except yaml.YAMLError:
+                continue
+    else:
+        # Try multi-document YAML
+        try:
+            for data in yaml.safe_load_all(content):
+                if data and "signatures" in data:
+                    for sig_data in data["signatures"]:
+                        signatures.append(_parse_signature(sig_data))
+        except yaml.YAMLError:
+            # Fall back to single document
+            data = yaml.safe_load(content)
+            if data and "signatures" in data:
+                for sig_data in data["signatures"]:
+                    signatures.append(_parse_signature(sig_data))
+
+    return signatures
+
+
+def parse_bundles_to_bundle_set(
+    bundle_contents: list[dict[str, Any]],
+    licenses: dict[str, License] | None = None,
+) -> SignatureBundleSet:
+    """Parse bundle data into SignatureBundleSet with expiration tracking.
+
+    This is the new preferred method for parsing bundles as it preserves
+    bundle-level metadata including expiration times from licenses.
+
+    Args:
+        bundle_contents: List of bundle dicts with 'bundle_id', 'version',
+                        'tier', and 'content' fields.
+        licenses: Optional dict mapping bundle_id to License objects.
+                 Used to set expiration times for encrypted bundles.
+
+    Returns:
+        SignatureBundleSet containing all parsed bundles with metadata.
+    """
+    from aiproxyguard.signatures.bundle import SignatureBundle, SignatureBundleSet
+
+    bundles: list[SignatureBundle] = []
+
+    for bundle_data in bundle_contents:
+        bundle_id = bundle_data.get("bundle_id", "")
+        version = bundle_data.get("version", "")
+        tier = bundle_data.get("tier", "free")
+        content = bundle_data.get("content", "")
+        is_encrypted = bundle_data.get("is_encrypted", False)
+
+        if not bundle_id:
+            logger.warning("Bundle missing bundle_id, skipping")
+            continue
+
+        # Parse signatures from content
+        signatures = _parse_yaml_content(content) if content else []
+        sig_set = SignatureSet(signatures=signatures)
+
+        # Get expiration from license if available
+        expires_at: datetime | None = None
+        if licenses and bundle_id in licenses:
+            license = licenses[bundle_id]
+            expires_at = license.expires_at
+
+        bundle = SignatureBundle(
+            bundle_id=bundle_id,
+            version=version,
+            tier=tier,
+            signatures=sig_set,
+            expires_at=expires_at,
+            is_encrypted=is_encrypted,
+        )
+        bundles.append(bundle)
+
+        logger.debug(
+            f"Parsed bundle {bundle_id}: {len(signatures)} signatures, "
+            f"tier={tier}, expires={expires_at}"
+        )
+
+    return SignatureBundleSet(bundles=bundles)

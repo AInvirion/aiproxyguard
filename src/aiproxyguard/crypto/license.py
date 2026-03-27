@@ -12,23 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""License validation and model decryption for encrypted ML models.
+"""Generic license validation and content decryption.
 
-.. deprecated::
-    This module is deprecated. Use :mod:`aiproxyguard.crypto.license` instead,
-    which provides generalized license handling for both ML models and
-    signature bundles.
+This module handles both ML models and signature bundles using the same
+envelope encryption scheme:
 
-The license contains:
-- DEK (Data Encryption Key) for AES-256-GCM decryption
-- Expiration timestamp
-- Ed25519 signature for integrity
+1. Content is encrypted once with a content-specific DEK (Data Encryption Key)
+2. Licenses wrap the DEK with account-specific metadata and expiration
+3. Licenses are signed with Ed25519 for integrity
+4. Content is decrypted using AES-256-GCM
 
-The proxy:
-1. Downloads encrypted model from cloud
-2. Validates license signature and expiration
-3. Extracts DEK from license
-4. Decrypts model and loads into classifier
+Supported content types:
+- ML models: format "aiproxyguard-encrypted-model-v1"
+- Signature bundles: format "aiproxyguard-encrypted-bundle-v1"
 """
 
 from __future__ import annotations
@@ -39,7 +35,6 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -67,31 +62,65 @@ def _parse_iso_timestamp(timestamp_str: str) -> datetime:
 
 @dataclass
 class License:
-    """Parsed license data."""
+    """Generic license for encrypted content (ML models or signature bundles).
+
+    Attributes:
+        license_id: Unique license identifier
+        license_type: Type of content ("ml_model" or "signature_bundle")
+        resource_id: ID of the licensed resource (model_id or bundle_id)
+        resource_version: Version of the licensed resource
+        account_id: Account that owns this license
+        tier: Subscription tier ("free", "pro", "enterprise")
+        dek: Data Encryption Key (decoded bytes)
+        issued_at: When the license was issued
+        expires_at: When the license expires
+        signature: Ed25519 signature for integrity
+        download_url: Optional URL to download the encrypted content
+    """
+
     license_id: str
-    model_id: str
-    model_version: str
+    license_type: str
+    resource_id: str
+    resource_version: str
     account_id: str
     tier: str
-    dek: bytes  # Decoded DEK
+    dek: bytes
     issued_at: datetime
     expires_at: datetime
     signature: str
+    download_url: str | None = None
 
 
 @dataclass
-class EncryptedModelHeader:
-    """Header from encrypted model file."""
+class EncryptedContentHeader:
+    """Header from encrypted content file (model or bundle).
+
+    Attributes:
+        format: Content format identifier
+        resource_id: ID of the resource (model_id or bundle_id)
+        version: Version of the resource
+        nonce: AES-GCM nonce (decoded bytes)
+        sha256_plaintext: SHA-256 hash of the decrypted content
+    """
+
     format: str
-    model_id: str
+    resource_id: str
     version: str
     nonce: bytes
     sha256_plaintext: str
 
 
+# Valid content formats
+VALID_FORMATS = {
+    "aiproxyguard-encrypted-model-v1",
+    "aiproxyguard-encrypted-bundle-v1",
+}
+
+
 def parse_license(license_data: dict[str, Any]) -> License:
-    """
-    Parse license dict into License object.
+    """Parse license dict into License object.
+
+    Supports both ML model licenses and signature bundle licenses.
 
     Args:
         license_data: License dict from API response
@@ -100,32 +129,45 @@ def parse_license(license_data: dict[str, Any]) -> License:
         Parsed License object
 
     Raises:
-        ValueError: If license format is invalid
+        ValueError: If license format is invalid or missing required fields
     """
-    required_fields = [
-        "license_id", "model_id", "model_version", "account_id",
-        "tier", "dek", "issued_at", "expires_at", "signature"
-    ]
-    for field in required_fields:
+    # Determine license type and extract resource ID
+    license_type = license_data.get("license_type", "ml_model")
+
+    if license_type == "signature_bundle":
+        resource_id = license_data.get("bundle_id", "")
+        resource_version = license_data.get("bundle_version", "")
+    else:
+        # ML model (default for backwards compatibility)
+        resource_id = license_data.get("model_id", "")
+        resource_version = license_data.get("model_version", "")
+
+    # Required fields
+    required_base = ["license_id", "account_id", "tier", "dek", "issued_at", "expires_at", "signature"]
+    for field in required_base:
         if field not in license_data:
             raise ValueError(f"Missing required field: {field}")
 
+    if not resource_id:
+        raise ValueError("Missing resource ID (model_id or bundle_id)")
+
     return License(
         license_id=license_data["license_id"],
-        model_id=license_data["model_id"],
-        model_version=license_data["model_version"],
+        license_type=license_type,
+        resource_id=resource_id,
+        resource_version=resource_version,
         account_id=license_data["account_id"],
         tier=license_data["tier"],
         dek=base64.b64decode(license_data["dek"]),
         issued_at=_parse_iso_timestamp(license_data["issued_at"]),
         expires_at=_parse_iso_timestamp(license_data["expires_at"]),
         signature=license_data["signature"],
+        download_url=license_data.get("download_url"),
     )
 
 
 def verify_license_signature(license_data: dict[str, Any], public_key_b64: str) -> bool:
-    """
-    Verify license signature using Ed25519.
+    """Verify license signature using Ed25519.
 
     Args:
         license_data: License dict with signature
@@ -143,6 +185,7 @@ def verify_license_signature(license_data: dict[str, Any], public_key_b64: str) 
 
         signature_b64 = license_data.get("signature")
         if not signature_b64:
+            logger.warning("License missing signature")
             return False
 
         # Recreate canonical JSON (exclude signature field)
@@ -164,13 +207,14 @@ def verify_license_signature(license_data: dict[str, Any], public_key_b64: str) 
         return False
 
 
-def is_license_valid(license: License, public_key_b64: str, license_data: dict[str, Any]) -> tuple[bool, str]:
-    """
-    Check if license is valid (signature OK and not expired).
+def is_license_valid(
+    license: License, public_key_b64: str, license_data: dict[str, Any]
+) -> tuple[bool, str]:
+    """Check if license is valid (signature OK and not expired).
 
     Args:
         license: Parsed License object
-        public_key_b64: Ed25519 public key
+        public_key_b64: Ed25519 public key for signature verification
         license_data: Original license dict (for signature verification)
 
     Returns:
@@ -181,68 +225,82 @@ def is_license_valid(license: License, public_key_b64: str, license_data: dict[s
         return False, "Invalid signature"
 
     # Check expiration
-    if datetime.now(timezone.utc) > license.expires_at:
+    now = datetime.now(timezone.utc)
+    if now > license.expires_at:
         return False, f"License expired at {license.expires_at.isoformat()}"
 
     return True, "Valid"
 
 
-def parse_encrypted_model_header(data: bytes) -> tuple[EncryptedModelHeader, bytes]:
-    """
-    Parse header from encrypted model file.
+def parse_encrypted_header(data: bytes) -> tuple[EncryptedContentHeader, bytes]:
+    """Parse header from encrypted content file.
+
+    The encrypted content format is:
+        [4 bytes: header length (big-endian)][JSON header][AES-GCM ciphertext]
 
     Args:
-        data: Raw encrypted model bytes
+        data: Raw encrypted content bytes
 
     Returns:
         (header, ciphertext) tuple
 
     Raises:
-        ValueError: If file is corrupted or header length is invalid
+        ValueError: If file is corrupted or header is invalid
     """
     if len(data) < 4:
-        raise ValueError("Encrypted model file too small (missing header length)")
+        raise ValueError("Encrypted content too small (missing header length)")
 
     header_len = int.from_bytes(data[:4], "big")
 
     # Validate header length against actual file size
     if header_len > len(data) - 4:
         raise ValueError(
-            f"Invalid header length {header_len} for file of size {len(data)}"
+            f"Invalid header length {header_len} for content of size {len(data)}"
         )
     if header_len > 1024 * 1024:  # 1MB max header
         raise ValueError(f"Header length {header_len} exceeds maximum (1MB)")
 
-    header_json = data[4:4 + header_len]
-    ciphertext = data[4 + header_len:]
+    header_json = data[4 : 4 + header_len]
+    ciphertext = data[4 + header_len :]
 
     try:
         header_dict = json.loads(header_json)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in header: {e}") from e
 
-    if header_dict.get("format") != "aiproxyguard-encrypted-model-v1":
-        raise ValueError(f"Unknown format: {header_dict.get('format')}")
+    content_format = header_dict.get("format", "")
+    if content_format not in VALID_FORMATS:
+        raise ValueError(f"Unknown format: {content_format}")
 
-    return EncryptedModelHeader(
-        format=header_dict["format"],
-        model_id=header_dict["model_id"],
-        version=header_dict["version"],
+    # Extract resource ID based on format
+    if "bundle" in content_format:
+        resource_id = header_dict.get("bundle_id", "")
+    else:
+        resource_id = header_dict.get("model_id", "")
+
+    return EncryptedContentHeader(
+        format=content_format,
+        resource_id=resource_id,
+        version=header_dict.get("version", ""),
         nonce=base64.b64decode(header_dict["nonce"]),
         sha256_plaintext=header_dict["sha256_plaintext"],
     ), ciphertext
 
 
-def decrypt_model(encrypted_data: bytes, dek: bytes) -> bytes:
-    """
-    Decrypt model using license DEK.
+def decrypt_content(
+    encrypted_data: bytes,
+    dek: bytes,
+    expected_format: str | None = None,
+) -> bytes:
+    """Decrypt AES-256-GCM encrypted content.
 
     Args:
-        encrypted_data: Raw encrypted model file
+        encrypted_data: Raw encrypted content bytes (header + ciphertext)
         dek: Data Encryption Key from license
+        expected_format: Optional format to validate against
 
     Returns:
-        Decrypted model bytes
+        Decrypted content bytes
 
     Raises:
         ValueError: If decryption fails or integrity check fails
@@ -251,15 +309,19 @@ def decrypt_model(encrypted_data: bytes, dek: bytes) -> bytes:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError as e:
         raise ValueError(
-            "cryptography package required for model decryption. "
+            "cryptography package required for content decryption. "
             "Install with: pip install aiproxyguard[ml]"
         ) from e
 
     # Parse header
-    header, ciphertext = parse_encrypted_model_header(encrypted_data)
+    header, ciphertext = parse_encrypted_header(encrypted_data)
 
-    # Additional Authenticated Data
-    aad = f"{header.model_id}:{header.version}".encode()
+    # Validate format if specified
+    if expected_format and header.format != expected_format:
+        raise ValueError(f"Format mismatch: expected {expected_format}, got {header.format}")
+
+    # Additional Authenticated Data (AAD)
+    aad = f"{header.resource_id}:{header.version}".encode()
 
     # Decrypt
     aesgcm = AESGCM(dek)
@@ -271,63 +333,16 @@ def decrypt_model(encrypted_data: bytes, dek: bytes) -> bytes:
     # Verify hash
     actual_hash = hashlib.sha256(plaintext).hexdigest()
     if actual_hash != header.sha256_plaintext:
-        raise ValueError("Model integrity check failed")
+        raise ValueError("Content integrity check failed")
 
     logger.info(
-        "Model decrypted successfully",
+        "Content decrypted successfully",
         extra={
-            "model_id": header.model_id,
+            "format": header.format,
+            "resource_id": header.resource_id,
             "version": header.version,
             "size": len(plaintext),
-        }
+        },
     )
 
     return plaintext
-
-
-def load_licensed_model(
-    encrypted_path: Path,
-    license_data: dict[str, Any],
-    public_key_b64: str,
-) -> bytes:
-    """
-    Load and decrypt a licensed model.
-
-    Args:
-        encrypted_path: Path to encrypted model file
-        license_data: License dict from API
-        public_key_b64: Ed25519 public key for verification
-
-    Returns:
-        Decrypted model bytes ready for loading
-
-    Raises:
-        ValueError: If license invalid or decryption fails
-    """
-    # Parse and validate license
-    license = parse_license(license_data)
-
-    is_valid, reason = is_license_valid(license, public_key_b64, license_data)
-    if not is_valid:
-        raise ValueError(f"Invalid license: {reason}")
-
-    # Read encrypted file
-    with open(encrypted_path, "rb") as f:
-        encrypted_data = f.read()
-
-    # Decrypt
-    return decrypt_model(encrypted_data, license.dek)
-
-
-def save_decrypted_model(model_bytes: bytes, output_path: Path) -> None:
-    """
-    Save decrypted model to disk.
-
-    Args:
-        model_bytes: Decrypted model data
-        output_path: Where to save the model
-    """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
-        f.write(model_bytes)
-    logger.info(f"Decrypted model saved to {output_path}")
