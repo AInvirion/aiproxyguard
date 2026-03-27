@@ -35,8 +35,13 @@ _REGEX_ENGINE: str = "re"
 try:
     import hyperscan
 
-    _REGEX_ENGINE = "hyperscan"
-    logger.info("Using Hyperscan for high-performance regex matching")
+    # Verify hyperscan is actually functional (not just stub bindings)
+    # The Scanner class only exists when the native library is properly linked
+    if hasattr(hyperscan, "Scanner") and hasattr(hyperscan, "Database"):
+        _REGEX_ENGINE = "hyperscan"
+        logger.info("Using Hyperscan for high-performance regex matching")
+    else:
+        raise ImportError("Hyperscan bindings incomplete - missing Scanner/Database")
 except ImportError:
     try:
         import re2
