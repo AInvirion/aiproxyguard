@@ -77,6 +77,21 @@ class TLSInterceptProxy:
         self._identity = identity
         self._metrics = metrics
         self._http_session: aiohttp.ClientSession | None = None
+        # Build allowlist of hosts from configured upstreams
+        self._allowed_hosts: set[str] = self._build_allowed_hosts(config)
+
+    def _build_allowed_hosts(self, config: "Config") -> set[str]:
+        """Extract allowed hostnames from upstream configurations."""
+        allowed = set()
+        for upstream in config.upstreams.values():
+            parsed = urlparse(upstream.url)
+            if parsed.hostname:
+                allowed.add(parsed.hostname.lower())
+        return allowed
+
+    def _is_host_allowed(self, host: str) -> bool:
+        """Check if host is in the allowlist of configured upstreams."""
+        return host.lower() in self._allowed_hosts
 
     async def start(self, host: str, port: int) -> asyncio.Server:
         """Start the TLS intercepting proxy server."""
@@ -165,6 +180,15 @@ class TLSInterceptProxy:
             port = 443
 
         logger.debug(f"CONNECT request for {host}:{port}", extra={"peer": peername})
+
+        # Validate host is in allowlist (CRITICAL: prevents open proxy abuse)
+        if not self._is_host_allowed(host):
+            logger.warning(
+                "CONNECT to disallowed host rejected",
+                extra={"host": host, "port": port, "peer": peername},
+            )
+            await self._send_error(writer, 403, "Forbidden: host not in allowlist")
+            return
 
         # Send 200 Connection Established
         writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -265,11 +289,27 @@ class TLSInterceptProxy:
                     except ValueError:
                         continue
 
-                # Read body if present
+                # Read body if present (with size limit check)
                 body = b""
                 content_length = headers.get("content-length")
                 if content_length:
-                    body = await reader.readexactly(int(content_length))
+                    content_len_int = int(content_length)
+                    # Check request size limit before reading
+                    if content_len_int > self._config.security.max_request_size:
+                        logger.warning(
+                            "Request body exceeds size limit",
+                            extra={
+                                "content_length": content_len_int,
+                                "limit": self._config.security.max_request_size,
+                            },
+                        )
+                        await self._send_json_response(
+                            writer,
+                            413,
+                            {"error": {"type": "payload_too_large", "message": "Request body exceeds size limit"}},
+                        )
+                        continue
+                    body = await reader.readexactly(content_len_int)
 
                 # Process through scanner and forward
                 await self._forward_request(
@@ -336,6 +376,17 @@ class TLSInterceptProxy:
                         scan_result.signature_id,
                     )
                     # Send blocked response
+                    # Log details server-side only (never expose to clients)
+                    logger.warning(
+                        "Request blocked",
+                        extra={
+                            "category": scan_result.category,
+                            "signature_id": scan_result.signature_id,
+                            "client_id": client_id,
+                            "internal_details": scan_result.details,  # For debugging only
+                        },
+                    )
+                    # Return generic message - never expose signature patterns
                     await self._send_json_response(
                         writer,
                         400,
@@ -343,7 +394,8 @@ class TLSInterceptProxy:
                             "error": {
                                 "type": "content_blocked",
                                 "code": f"{scan_result.category}_detected",
-                                "message": f"Request blocked: {scan_result.details}",
+                                "message": "Request blocked: policy violation detected",
+                                "category": scan_result.category,
                             }
                         },
                     )
@@ -393,8 +445,23 @@ class TLSInterceptProxy:
             url = f"https://{upstream_host}:{upstream_port}{path}"
 
             # Build headers for upstream request
+            # Include vendor-specific headers required by LLM providers
             forward_headers: dict[str, str] = {}
-            for key in ("content-type", "accept", "authorization", "api-key", "x-api-key"):
+            allowed_headers = (
+                # Standard headers
+                "content-type", "accept", "accept-encoding", "accept-language",
+                # Auth headers
+                "authorization", "api-key", "x-api-key",
+                # OpenAI headers
+                "openai-organization", "openai-project", "openai-beta",
+                # Anthropic headers
+                "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
+                # OpenRouter headers
+                "x-title", "http-referer",
+                # Common request IDs
+                "x-request-id", "x-correlation-id",
+            )
+            for key in allowed_headers:
                 if key in headers:
                     forward_headers[key] = headers[key]
 
@@ -409,7 +476,40 @@ class TLSInterceptProxy:
                 timeout=aiohttp.ClientTimeout(total=self._config.security.upstream_timeout_s),
                 ssl=True,  # Verify upstream SSL
             ) as resp:
+                # Check response size limit before reading
+                upstream_content_length = resp.content_length
+                if upstream_content_length is not None and upstream_content_length > self._config.security.max_response_size:
+                    logger.warning(
+                        "Response too large",
+                        extra={
+                            "content_length": upstream_content_length,
+                            "limit": self._config.security.max_response_size,
+                        },
+                    )
+                    await self._send_json_response(
+                        writer,
+                        502,
+                        {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
+                    )
+                    return
+
                 response_body = await resp.read()
+
+                # Verify actual size after read (in case Content-Length was missing)
+                if len(response_body) > self._config.security.max_response_size:
+                    logger.warning(
+                        "Response too large (after read)",
+                        extra={
+                            "actual_size": len(response_body),
+                            "limit": self._config.security.max_response_size,
+                        },
+                    )
+                    await self._send_json_response(
+                        writer,
+                        502,
+                        {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
+                    )
+                    return
 
                 duration = time.monotonic() - start_time
                 self._metrics.record_request(upstream_host, method, resp.status, duration)
