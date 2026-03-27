@@ -261,8 +261,20 @@ async def proxy_handler(request: web.Request) -> web.Response:
         session: aiohttp.ClientSession = app["http_session"]
         # Build headers (copy relevant headers)
         headers = {}
-        # Always forward content-type and accept
-        for key in ("content-type", "accept"):
+        # Forward standard and vendor-specific headers required by LLM providers
+        allowed_headers = (
+            # Standard headers
+            "content-type", "accept", "accept-encoding", "accept-language",
+            # OpenAI headers
+            "openai-organization", "openai-project", "openai-beta",
+            # Anthropic headers
+            "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
+            # OpenRouter headers
+            "x-title", "http-referer",
+            # Common request IDs
+            "x-request-id", "x-correlation-id",
+        )
+        for key in allowed_headers:
             if key in request.headers:
                 headers[key] = request.headers[key]
 
@@ -423,7 +435,8 @@ async def proxy_handler(request: web.Request) -> web.Response:
 
 def create_app(config: Config) -> web.Application:
     """Create the aiohttp application."""
-    app = web.Application()
+    # Set client_max_size to honor configured max_request_size
+    app = web.Application(client_max_size=config.security.max_request_size)
 
     # Store config
     app["config"] = config
@@ -513,6 +526,7 @@ async def _run_tls_server(config: Config) -> None:
     """Run the TLS-intercepting proxy server."""
     from aiproxyguard.tls import CertificateAuthority
     from aiproxyguard.tls_proxy import run_tls_proxy
+    from aiproxyguard.signatures.models import SignatureSet
 
     # Load CA for certificate generation
     ca = CertificateAuthority(
@@ -527,7 +541,6 @@ async def _run_tls_server(config: Config) -> None:
     try:
         signatures = load_signatures(config.signatures.path)
     except FileNotFoundError:
-        from aiproxyguard.signatures.models import SignatureSet
         signatures = SignatureSet(signatures=[])
 
     scanner = ScannerPipeline(config.scanner, signatures, config.ml_classifier)
@@ -549,20 +562,48 @@ async def _run_tls_server(config: Config) -> None:
     metrics = MetricsCollector()
     metrics.set_signatures_loaded("free", len(signatures.signatures))
 
+    # Initialize control plane client (same as HTTP path)
+    cp_client = None
+    if config.control_plane.enabled:
+        from aiproxyguard import __version__
+        init_client(config.control_plane, __version__)
+        cp_client = get_client()
+
+        if cp_client:
+            # Register policy update callback
+            cp_client.set_policy_update_callback(policy.update_config)
+
+            # Register signature update callback for hot-reload
+            def on_signature_update(new_signatures: "SignatureSet") -> None:
+                """Hot-reload signatures into the scanner without restart."""
+                scanner.reload(new_signatures)
+                metrics.set_signatures_loaded("free", len(new_signatures.signatures))
+
+            cp_client.set_signature_update_callback(on_signature_update)
+
+            # Start the control plane client
+            await cp_client.start()
+
     logger.info(
         "Starting TLS intercept proxy",
         extra={
             "host": config.server.host,
             "port": config.server.port,
             "ca_cert": config.tls.ca_cert,
+            "control_plane_enabled": config.control_plane.enabled,
         },
     )
 
-    await run_tls_proxy(
-        config=config,
-        ca=ca,
-        scanner=scanner,
-        policy=policy,
-        identity=identity,
-        metrics=metrics,
-    )
+    try:
+        await run_tls_proxy(
+            config=config,
+            ca=ca,
+            scanner=scanner,
+            policy=policy,
+            identity=identity,
+            metrics=metrics,
+        )
+    finally:
+        # Stop control plane client on shutdown
+        if cp_client:
+            await cp_client.stop()
