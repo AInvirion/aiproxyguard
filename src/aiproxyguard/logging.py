@@ -40,7 +40,23 @@ class RedactingFilter(logging.Filter):
             record.headers = self._redact_headers(record.headers)
         if record.msg:
             record.msg = self._redact_string(str(record.msg))
+        # Also redact args to prevent secrets passed via format strings
+        # e.g., logger.info("Token %s", token) would leak the token
+        if record.args:
+            record.args = self._redact_args(record.args)
         return True
+
+    def _redact_args(self, args: tuple | dict) -> tuple | dict:
+        """Redact sensitive patterns in log arguments."""
+        if isinstance(args, dict):
+            return {k: self._redact_value(v) for k, v in args.items()}
+        return tuple(self._redact_value(arg) for arg in args)
+
+    def _redact_value(self, value: Any) -> Any:
+        """Redact sensitive patterns in a single value."""
+        if isinstance(value, str):
+            return self._redact_string(value)
+        return value
 
     def _redact_headers(self, headers: dict[str, Any]) -> dict[str, Any]:
         """Redact sensitive headers."""
