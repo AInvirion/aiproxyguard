@@ -121,8 +121,8 @@ if [ -d "$SIGNATURES_DIR" ] && [ "$(ls -A $SIGNATURES_DIR 2>/dev/null)" ]; then
     mkdir -p "$SIGNATURES_DIR"
 fi
 
-# Extract
-tar -xzf "$TMPDIR/$BUNDLE_NAME" -C "$SIGNATURES_DIR"
+# Extract - strip top-level directory from tarball
+tar -xzf "$TMPDIR/$BUNDLE_NAME" -C "$SIGNATURES_DIR" --strip-components=1
 
 # Count signatures
 YAML_COUNT=$(find "$SIGNATURES_DIR" -name "*.yaml" -o -name "*.yml" 2>/dev/null | wc -l | tr -d ' ')

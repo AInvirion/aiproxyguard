@@ -53,7 +53,8 @@ def load_signatures(path: str) -> SignatureSet:
     if sig_path.is_file():
         yaml_files = [sig_path]
     else:
-        yaml_files = list(sig_path.glob("*.yaml")) + list(sig_path.glob("*.yml"))
+        # Search recursively for YAML files
+        yaml_files = list(sig_path.rglob("*.yaml")) + list(sig_path.rglob("*.yml"))
     for yaml_file in yaml_files:
         with open(yaml_file) as f:
             data = yaml.safe_load(f)
