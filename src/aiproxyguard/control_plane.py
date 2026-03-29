@@ -307,9 +307,10 @@ class ControlPlaneClient:
                 await self._send_heartbeat()
                 await self._flush_telemetry()
             except asyncio.CancelledError:
+                logger.debug("Heartbeat loop cancelled")
                 break
             except Exception as e:
-                logger.error(f"Heartbeat error: {e}")
+                logger.error(f"Heartbeat error: {e}", exc_info=True)
 
     async def _send_heartbeat(self) -> None:
         """Send a heartbeat to the control plane."""
