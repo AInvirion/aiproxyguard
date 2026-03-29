@@ -341,9 +341,9 @@ class ControlPlaneClient:
                 if self._ml_model_callback:
                     await self.sync_ml_model()
 
-            # Check if config version changed
+            # Check if config version changed (use != to handle policy switches that reset version)
             server_config_version = data.get("config_version", 0)
-            if server_config_version > self._last_config_version:
+            if server_config_version != self._last_config_version:
                 logger.info(
                     f"Config version changed: {self._last_config_version} -> {server_config_version}"
                 )
@@ -460,7 +460,23 @@ class ControlPlaneClient:
             if self._policy_update_callback:
                 translated = self._translate_policy_config(config)
                 self._policy_update_callback(translated)
-                logger.info("Policy engine updated with new config")
+                # Log detection settings detail from translated config
+                for category, settings in translated.get("categories", {}).items():
+                    logger.info(
+                        f"Detection rule applied: {category}",
+                        extra={
+                            "category": category,
+                            "action": settings.get("action", "block"),
+                            "threshold": settings.get("threshold", 0.5),
+                        },
+                    )
+                logger.info(
+                    "Policy engine updated",
+                    extra={
+                        "default_action": translated.get("default_action"),
+                        "category_count": len(translated.get("categories", {})),
+                    },
+                )
 
             # Apply logging settings
             logging_config = config.get("logging")
@@ -504,13 +520,24 @@ class ControlPlaneClient:
     def _translate_policy_config(self, cloud_config: dict) -> dict:
         """Translate cloud policy config to PolicyEngine format.
 
-        Cloud format:
+        Supports two cloud formats:
+
+        Format 1 (detection-based, per-category thresholds):
             {
                 "detection": {
                     "prompt_injection": {"enabled": true, "action": "warn", "threshold": 0.7},
                     ...
                 },
                 "logging": {...}
+            }
+
+        Format 2 (categories-based, global thresholds):
+            {
+                "categories": {
+                    "prompt_injection": {"enabled": true, "action": "block"},
+                    ...
+                },
+                "thresholds": {"block_score": 0.8, "warn_score": 0.5}
             }
 
         PolicyEngine format:
@@ -523,19 +550,49 @@ class ControlPlaneClient:
                 "allowlists": [...]
             }
         """
-        detection = cloud_config.get("detection", {})
         categories = {}
+        default_action = "block"
 
-        # Infer default action from the most common action or use "block"
-        actions = [cat.get("action", "block") for cat in detection.values() if cat.get("enabled", True)]
-        default_action = max(set(actions), key=actions.count) if actions else "block"
+        # Check for Format 1 (detection-based)
+        detection = cloud_config.get("detection", {})
+        if detection:
+            actions = [
+                cat.get("action", "block")
+                for cat in detection.values()
+                if isinstance(cat, dict) and cat.get("enabled", True)
+            ]
+            default_action = max(set(actions), key=actions.count) if actions else "block"
 
-        for category, cat_config in detection.items():
-            if cat_config.get("enabled", True):
-                categories[category] = {
-                    "action": cat_config.get("action", default_action),
-                    "threshold": cat_config.get("threshold", 0.5),
-                }
+            for category, cat_config in detection.items():
+                if isinstance(cat_config, dict) and cat_config.get("enabled", True):
+                    categories[category] = {
+                        "action": cat_config.get("action", default_action),
+                        "threshold": cat_config.get("threshold", 0.5),
+                    }
+        else:
+            # Check for Format 2 (categories-based with global thresholds)
+            cloud_categories = cloud_config.get("categories", {})
+            thresholds = cloud_config.get("thresholds", {})
+            block_score = thresholds.get("block_score", 0.8)
+            warn_score = thresholds.get("warn_score", 0.5)
+
+            if cloud_categories:
+                actions = [
+                    cat.get("action", "block")
+                    for cat in cloud_categories.values()
+                    if isinstance(cat, dict) and cat.get("enabled", True)
+                ]
+                default_action = max(set(actions), key=actions.count) if actions else "block"
+
+                for category, cat_config in cloud_categories.items():
+                    if isinstance(cat_config, dict) and cat_config.get("enabled", True):
+                        action = cat_config.get("action", default_action)
+                        # Use appropriate threshold based on action
+                        threshold = block_score if action == "block" else warn_score
+                        categories[category] = {
+                            "action": action,
+                            "threshold": threshold,
+                        }
 
         return {
             "default_action": default_action,
@@ -938,7 +995,7 @@ class ControlPlaneClient:
 
         try:
             response = await self.client.get(
-                "/api/ml-models/latest",
+                "/api/v1/ml-models/latest",
                 params={"model_type": model_type},
             )
             response.raise_for_status()
@@ -946,7 +1003,7 @@ class ControlPlaneClient:
         except httpx.HTTPStatusError as e:
             # 404 is expected if cloud doesn't have ML model sync yet
             if e.response.status_code == 404:
-                logger.debug("ML model sync not available on control plane")
+                logger.info("ML model endpoint not available on control plane (404)")
             else:
                 logger.error(f"Failed to fetch latest ML model: {e}")
             return None
@@ -964,7 +1021,7 @@ class ControlPlaneClient:
 
         try:
             response = await self.client.post(
-                f"/api/ml-models/{model_id}/license",
+                f"/api/v1/ml-models/{model_id}/license",
             )
             response.raise_for_status()
             license_data = response.json()
@@ -1002,9 +1059,10 @@ class ControlPlaneClient:
 
         try:
             # Check for latest model
+            logger.info(f"Checking for ML model updates (type={model_type}, tier={self._tier})")
             model_info = await self.fetch_latest_ml_model(model_type)
             if not model_info:
-                logger.debug("No ML model available")
+                logger.info("No ML model available from control plane, using bundled model")
                 return False
 
             model_id = model_info.get("model_id")
@@ -1029,7 +1087,11 @@ class ControlPlaneClient:
             if is_encrypted:
                 return await self._sync_encrypted_model(model_id, model_version)
             else:
-                return await self._sync_unencrypted_model(model_id)
+                file_url = model_info.get("file_url")
+                expected_sha256 = model_info.get("file_sha256")
+                return await self._sync_unencrypted_model(
+                    model_id, model_version, file_url, expected_sha256
+                )
 
         except Exception as e:
             logger.error(f"Failed to sync ML model: {e}")
@@ -1095,29 +1157,47 @@ class ControlPlaneClient:
         logger.info(f"ML model {model_id} v{model_version} synced successfully")
         return True
 
-    async def _sync_unencrypted_model(self, model_id: str) -> bool:
-        """Sync an unencrypted ML model (direct download).
+    async def _sync_unencrypted_model(
+        self,
+        model_id: str,
+        model_version: str,
+        file_url: str | None,
+        expected_sha256: str | None,
+    ) -> bool:
+        """Sync an unencrypted ML model (direct download with SHA256 verification).
 
-        SECURITY WARNING: This method downloads and loads unverified bytes.
-        It should only be used in development/testing environments.
-        Production deployments MUST use encrypted models with license validation.
+        Downloads the model and verifies its SHA256 hash if provided.
         """
-        logger.warning(
-            "SECURITY: Loading unencrypted ML model from network. "
-            "This is only safe in trusted development environments. "
-            "Use encrypted models with license validation in production."
-        )
         try:
+            # Prefer control plane endpoint (serves from DB)
+            logger.info(f"Downloading ML model {model_id} from control plane")
             response = await self.client.get(
-                f"/api/ml-models/{model_id}/download",
+                f"/api/v1/ml-models/{model_id}/download",
                 follow_redirects=True,
             )
             response.raise_for_status()
             model_data = response.content
 
-            # Call callback with model data (no license for unencrypted)
-            self._ml_model_callback(model_data, {})
-            logger.info(f"ML model {model_id} synced successfully (unencrypted)")
+            # Verify SHA256 hash if provided
+            if expected_sha256:
+                actual_sha256 = hashlib.sha256(model_data).hexdigest()
+                if actual_sha256 != expected_sha256:
+                    logger.error(
+                        f"ML model SHA256 mismatch! Expected {expected_sha256}, got {actual_sha256}. "
+                        "Model may be corrupted or tampered with."
+                    )
+                    return False
+                logger.info(f"ML model SHA256 verified: {actual_sha256[:16]}...")
+            else:
+                logger.warning(
+                    "No SHA256 hash provided for ML model verification. "
+                    "Cannot verify model integrity."
+                )
+
+            # Call callback with model data
+            self._ml_model_callback(model_data, {"model_id": model_id, "version": model_version})
+            self._last_ml_model_version = f"{model_id}:{model_version}"
+            logger.info(f"ML model {model_id} v{model_version} synced successfully")
             return True
         except httpx.HTTPError as e:
             logger.error(f"Failed to download ML model: {e}")
