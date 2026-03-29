@@ -16,19 +16,31 @@ RUN mkdir -p src/aiproxyguard && \
     echo '__version__ = "0.0.0"' > src/aiproxyguard/__init__.py
 
 # Install dependencies with pip cache mount (much faster rebuilds)
+# Use [enterprise] to include onnxruntime for ONNX model support
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir ".[ml]"
+    pip install --no-cache-dir ".[enterprise]"
 
 # Now copy actual source
 COPY src/ ./src/
 
 # Reinstall to get correct version
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir ".[ml]"
+    pip install --no-cache-dir ".[enterprise]"
 
 FROM python:3.11-slim
 
 WORKDIR /app
+
+# Install CA certificates and locales for ONNX runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    locales \
+    && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 # Copy installed packages
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
