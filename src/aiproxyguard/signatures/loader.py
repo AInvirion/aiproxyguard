@@ -45,6 +45,24 @@ def _parse_signature(data: dict[str, Any]) -> Signature:
     )
 
 
+def get_signature_version(path: str) -> str:
+    """Read the signature version from the .version file.
+
+    Args:
+        path: Path to the signatures directory.
+
+    Returns:
+        Version string, or empty string if not found.
+    """
+    version_file = Path(path) / ".version"
+    if version_file.exists():
+        try:
+            return version_file.read_text().strip()
+        except Exception:
+            pass
+    return ""
+
+
 def load_signatures(path: str) -> SignatureSet:
     sig_path = Path(path)
     signatures: list[Signature] = []

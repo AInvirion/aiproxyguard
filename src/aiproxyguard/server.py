@@ -31,7 +31,7 @@ from aiproxyguard.router import Router
 from aiproxyguard.identity import IdentityResolver
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
-from aiproxyguard.signatures.loader import load_signatures
+from aiproxyguard.signatures.loader import load_signatures, get_signature_version
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.logging import get_logger, update_logging
 from aiproxyguard.control_plane import init_client, get_client
@@ -110,6 +110,12 @@ async def on_startup(app: web.Application) -> None:
                 app_config.security.scanner_timeout_ms = config["scanner_timeout_ms"]
 
         cp_client.set_security_update_callback(on_security_update)
+
+        # Set initial signature version from bundled signatures
+        config: Config = app["config"]
+        initial_sig_version = get_signature_version(config.signatures.path)
+        if initial_sig_version:
+            cp_client.set_initial_signature_version(initial_sig_version)
 
         await cp_client.start()
 
@@ -680,6 +686,11 @@ async def _run_tls_server(config: Config) -> None:
                     config.security.scanner_timeout_ms = security_config["scanner_timeout_ms"]
 
             cp_client.set_security_update_callback(on_security_update)
+
+            # Set initial signature version from bundled signatures
+            initial_sig_version = get_signature_version(config.signatures.path)
+            if initial_sig_version:
+                cp_client.set_initial_signature_version(initial_sig_version)
 
             # Start the control plane client
             await cp_client.start()

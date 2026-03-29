@@ -189,6 +189,15 @@ class ControlPlaneClient:
         """
         self._security_update_callback = callback
 
+    def set_initial_signature_version(self, version: str) -> None:
+        """Set the initial signature version from bundled signatures.
+
+        This prevents misleading '' -> 'vX.X.X' log messages on first sync.
+        """
+        if version:
+            self._last_signature_version = version
+            logger.debug(f"Initial signature version set to {version}")
+
     async def start(self) -> None:
         """Start the control plane client (register and begin heartbeat)."""
         if not self.config.enabled:
@@ -934,6 +943,13 @@ class ControlPlaneClient:
             )
             response.raise_for_status()
             return response.json()
+        except httpx.HTTPStatusError as e:
+            # 404 is expected if cloud doesn't have ML model sync yet
+            if e.response.status_code == 404:
+                logger.debug("ML model sync not available on control plane")
+            else:
+                logger.error(f"Failed to fetch latest ML model: {e}")
+            return None
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch latest ML model: {e}")
             return None
