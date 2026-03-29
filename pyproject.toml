@@ -54,6 +54,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["security_analysis"]
 
 [tool.mypy]
 python_version = "3.11"

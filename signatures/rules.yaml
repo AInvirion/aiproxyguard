@@ -342,12 +342,12 @@ signatures:
 
   # Additional Encoding Rules
   - id: ENC-004
-    name: Hex string with execution
+    name: Hex string with decode command
     severity: high
     action: block
     category: encoding-bypass
-    pattern: "(?i)(decode|convert)?\\s*[0-9a-f]{10,}\\s*(and|then)?\\s*(execute|run)?"
-    description: Detects hex-encoded strings
+    pattern: "(?i)(convert|decode|translate)\\s+(this\\s+)?hex(adecimal)?\\s*(code\\s*)?(to\\s+(ascii|text|string))?[:\\s]+[\"']?[0-9a-f\\s]{8,}"
+    description: Detects hex strings with explicit decode command
 
   - id: ENC-005
     name: ROT13 with execution

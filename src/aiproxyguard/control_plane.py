@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import asyncio
-import gzip
 import hashlib
 import logging
 import platform
