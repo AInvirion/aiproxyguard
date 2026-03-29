@@ -17,11 +17,14 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
 import logging
 import platform
+import tarfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import TYPE_CHECKING, Callable
 
 import httpx
@@ -45,6 +48,43 @@ def _get_instance_id() -> str:
     system = platform.system()
     unique_str = f"{hostname}-{machine}-{system}"
     return hashlib.sha256(unique_str.encode()).hexdigest()[:32]
+
+
+def _extract_yaml_from_tar_gz(data: bytes) -> str:
+    """Extract and concatenate YAML files from a tar.gz bundle.
+
+    Args:
+        data: tar.gz bytes (decrypted bundle content)
+
+    Returns:
+        Concatenated YAML content with section markers
+    """
+    yaml_parts = []
+    with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if member.isfile() and (member.name.endswith(".yaml") or member.name.endswith(".yml")):
+                f = tar.extractfile(member)
+                if f:
+                    content = f.read().decode("utf-8")
+                    yaml_parts.append(f"# === {member.name} ===\n{content}")
+    return "\n".join(yaml_parts)
+
+
+def _decode_bundle_content(decrypted: bytes) -> str:
+    """Decode decrypted bundle content, handling tar.gz if needed.
+
+    Args:
+        decrypted: Decrypted bytes (may be plain YAML or tar.gz)
+
+    Returns:
+        YAML content as string
+    """
+    # Check for gzip magic bytes (0x1f 0x8b)
+    if decrypted[:2] == b"\x1f\x8b":
+        logger.debug("Decrypted content is tar.gz, extracting YAML files")
+        return _extract_yaml_from_tar_gz(decrypted)
+    else:
+        return decrypted.decode("utf-8")
 
 
 def _get_fingerprint() -> str:
@@ -211,6 +251,12 @@ class ControlPlaneClient:
         logger.info(f"Connecting to control plane at {self.config.url}")
         # Attempt initial registration with retry
         await self._register_with_retry()
+
+        # If registration failed, try to load from cache for offline cold-start
+        if not self._registered:
+            logger.info("Registration failed, attempting to load signatures from cache")
+            await self._load_signatures_from_cache()
+
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         logger.info("Control plane client started")
 
@@ -340,6 +386,8 @@ class ControlPlaneClient:
                 # Sync ML model when tier changes (e.g., upgrade to enterprise)
                 if self._ml_model_callback:
                     await self.sync_ml_model()
+                # Re-sync signatures when tier changes (different tiers have different bundles)
+                await self._fetch_and_apply_signatures()
 
             # Check if config version changed (use != to handle policy switches that reset version)
             server_config_version = data.get("config_version", 0)
@@ -678,14 +726,19 @@ class ControlPlaneClient:
                         )
                         bundle_response.raise_for_status()
                         bundle_data = bundle_response.json()
+                        content = bundle_data.get("content", "")
+                        logger.info(
+                            f"Fetched plain bundle {bundle_id}: "
+                            f"content_length={len(content)}, "
+                            f"content_preview={content[:100]!r}"
+                        )
                         bundle_contents.append({
                             "bundle_id": bundle_id,
                             "version": bundle_info.get("version", ""),
                             "tier": tier,
-                            "content": bundle_data.get("content", ""),
+                            "content": content,
                             "is_encrypted": False,
                         })
-                        logger.debug(f"Fetched plain bundle {bundle_id}")
                     except httpx.HTTPError as e:
                         logger.warning(f"Failed to fetch bundle {bundle_id}: {e}")
 
@@ -814,7 +867,7 @@ class ControlPlaneClient:
                     "bundle_id": bundle_id,
                     "version": bundle_info.get("version", ""),
                     "tier": bundle_info.get("tier", ""),
-                    "content": decrypted.decode("utf-8"),
+                    "content": _decode_bundle_content(decrypted),
                     "is_encrypted": True,
                 },
             }
@@ -840,7 +893,7 @@ class ControlPlaneClient:
                             "bundle_id": bundle_id,
                             "version": license_data.get("bundle_version", ""),
                             "tier": bundle_info.get("tier", ""),
-                            "content": decrypted.decode("utf-8"),
+                            "content": _decode_bundle_content(decrypted),
                             "is_encrypted": True,
                         },
                     }
@@ -880,7 +933,7 @@ class ControlPlaneClient:
                     "bundle_id": bundle_id,
                     "version": license_data.get("bundle_version", ""),
                     "tier": license_data.get("tier", "unknown"),
-                    "content": decrypted.decode("utf-8"),
+                    "content": _decode_bundle_content(decrypted),
                     "is_encrypted": True,
                 })
                 licenses[bundle_id] = license
@@ -1055,6 +1108,11 @@ class ControlPlaneClient:
             True if sync was successful
         """
         if not self.config.enabled or not self._ml_model_callback:
+            return False
+
+        # Skip if not registered or auth permanently failed
+        if not self._registered or self._auth_permanently_failed:
+            logger.debug("Skipping ML model sync: not registered with control plane")
             return False
 
         try:

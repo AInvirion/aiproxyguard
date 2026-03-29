@@ -107,13 +107,31 @@ class SignatureBundleSet:
 
         active_sigs = []
         for bundle in self.bundles:
+            sig_count = len(bundle.signatures.signatures)
+            pattern_count = len(bundle.signatures.all_patterns())
+
             if bundle.is_expired:
                 if not bundle.is_free:
                     logger.warning(
-                        f"Bundle {bundle.bundle_id} expired at {bundle.expires_at}, "
-                        f"skipping {len(bundle.signatures.signatures)} signatures"
+                        f"Bundle {bundle.bundle_id} EXPIRED at {bundle.expires_at}, "
+                        f"skipping {sig_count} signatures"
                     )
                 continue
+
+            # Log license status for each active bundle
+            if bundle.expires_at:
+                time_left = bundle.time_until_expiry
+                hours_left = time_left / 3600 if time_left else 0
+                logger.info(
+                    f"Bundle {bundle.bundle_id} ACTIVE: {sig_count} signatures, "
+                    f"{pattern_count} patterns, expires in {hours_left:.1f}h"
+                )
+            else:
+                logger.info(
+                    f"Bundle {bundle.bundle_id} ACTIVE (free tier): {sig_count} signatures, "
+                    f"{pattern_count} patterns, no expiration"
+                )
+
             active_sigs.extend(bundle.signatures.signatures)
 
         return SignatureSet(signatures=active_sigs)

@@ -248,9 +248,11 @@ def parse_bundles_to_bundle_set(
         )
         bundles.append(bundle)
 
-        logger.debug(
+        # Count total patterns across all signatures
+        total_patterns = sum(len(s.patterns) for s in signatures)
+        logger.info(
             f"Parsed bundle {bundle_id}: {len(signatures)} signatures, "
-            f"tier={tier}, expires={expires_at}"
+            f"{total_patterns} patterns, tier={tier}, expires={expires_at}"
         )
 
     return SignatureBundleSet(bundles=bundles)
