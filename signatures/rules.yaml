@@ -1,0 +1,392 @@
+# AIProxyGuard Security Detection Rules
+# Tier: free
+# Bundled signatures from aiproxyguard-signatures repo
+
+signatures:
+  # Prompt Injection Rules
+  - id: PI-001
+    name: Ignore instructions directive
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)ignore\\s+(all\\s+)?(previous|prior|above)\\s+(instructions?|prompts?|rules?)"
+    description: Attempts to make the model ignore its system prompt
+
+  - id: PI-002
+    name: Role override attempt
+    severity: critical
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(you\\s+are\\s+now|pretend\\s+(you\\s+are|to\\s+be)|act\\s+as\\s+if|from\\s+now\\s+on\\s+you)"
+    description: Attempts to override the model's assigned role
+
+  - id: PI-003
+    name: System prompt extraction
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(repeat|show|display|print|output|reveal)\\s+(your|the)\\s+(system\\s+)?(prompt|instructions|rules)"
+    description: Attempts to extract the system prompt
+
+  - id: PI-004
+    name: Developer mode activation
+    severity: critical
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(enable|activate|enter|switch\\s+to)\\s+(developer|dev|debug|admin|root)\\s+mode"
+    description: Attempts to activate unauthorized modes
+
+  - id: PI-005
+    name: Instruction boundary marker
+    severity: medium
+    action: warn
+    category: prompt-injection
+    pattern: "(?i)(end\\s+of\\s+system\\s+prompt|</?system>|\\[/?INST\\]|###\\s*(system|instruction))"
+    description: Uses formatting that mimics instruction boundaries
+
+  - id: PI-006
+    name: Base64 encoded injection
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(decode|interpret|execute|run)\\s+(this\\s+)?base64"
+    description: Attempts to smuggle instructions via base64 encoding
+
+  - id: PI-007
+    name: Multi-language injection
+    severity: medium
+    action: warn
+    category: prompt-injection
+    pattern: "(?i)(translate|say|respond)\\s+in\\s+(a\\s+different|another)\\s+language\\s+to\\s+bypass"
+    description: Attempts to bypass filters using language switching
+
+  - id: PI-008
+    name: Hypothetical scenario bypass
+    severity: medium
+    action: log
+    category: prompt-injection
+    pattern: "(?i)(hypothetically|theoretically|in\\s+a\\s+fictional\\s+scenario|for\\s+educational\\s+purposes)"
+    description: Uses hypothetical framing to bypass restrictions
+
+  # Jailbreak Rules
+  - id: JB-001
+    name: DAN jailbreak pattern
+    severity: critical
+    action: block
+    category: jailbreak
+    pattern: "(?i)(do\\s+anything\\s+now|DAN\\s+mode|jailbreak(en|ed)?)"
+    description: Detects the classic DAN (Do Anything Now) jailbreak
+
+  - id: JB-002
+    name: Evil mode activation
+    severity: critical
+    action: block
+    category: jailbreak
+    pattern: "(?i)(evil|malicious|unrestricted|unfiltered)\\s+(mode|version|AI|assistant)"
+    description: Attempts to activate an unrestricted mode
+
+  - id: JB-003
+    name: Opposite day technique
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(opposite\\s+day|everything\\s+is\\s+reversed|say\\s+the\\s+opposite)"
+    description: Uses semantic reversal to bypass filters
+
+  - id: JB-004
+    name: Character roleplay jailbreak
+    severity: high
+    action: warn
+    category: jailbreak
+    pattern: "(?i)(roleplay\\s+as|pretend\\s+to\\s+be|act\\s+like)\\s+(an?\\s+)?(evil|unethical|unrestricted|criminal)"
+    description: Uses character roleplay to bypass restrictions
+
+  - id: JB-005
+    name: Token smuggling
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(split|break|separate)\\s+(the\\s+)?(word|token|character)s?\\s+to\\s+(bypass|avoid|evade)"
+    description: Attempts to evade detection by splitting tokens
+
+  - id: JB-006
+    name: Grandma exploit
+    severity: medium
+    action: warn
+    category: jailbreak
+    pattern: "(?i)(my\\s+)?(grandma|grandmother|nana)\\s+(used\\s+to|would)\\s+(tell|read|say)"
+    description: Uses emotional manipulation via grandma framing
+
+  - id: JB-007
+    name: Sudo/admin command
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(sudo|admin|root)\\s+(mode|access|command|override)"
+    description: Attempts to gain elevated privileges
+
+  - id: JB-008
+    name: Filter bypass acknowledgment
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(I\\s+know\\s+(this|it)\\s+(is|might\\s+be)\\s+(against|violates)|bypass(ing)?\\s+(your|the)\\s+filter)"
+    description: Explicitly acknowledges attempting to bypass filters
+
+  # Additional Prompt Injection Rules
+  - id: PI-009
+    name: Override system message
+    severity: critical
+    action: block
+    category: prompt-injection
+    pattern: "(?i)override\\s+(your|the|my)?\\s*(system|initial)?\\s*(message|prompt|instructions)"
+    description: Attempts to override system message
+
+  - id: PI-010
+    name: New instructions directive
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(new|updated|revised|changed)\\s+(instructions|rules|guidelines|directives)\\s*:"
+    description: Attempts to inject new instructions
+
+  - id: PI-011
+    name: Disregard directive
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)disregard\\s+(all\\s+)?(previous|prior|your|safety|security)"
+    description: Attempts to disregard safety measures
+
+  - id: PI-012
+    name: Forget directive
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)forget\\s+(all\\s+)?(your|previous|prior|the)\\s*(rules|instructions|training|guidelines)"
+    description: Attempts to make model forget its training
+
+  # Additional Jailbreak Rules
+  - id: JB-009
+    name: No restrictions request
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(have|with)?\\s*no\\s+(restrictions|guidelines|limitations|filters|rules|boundaries)"
+    description: Requests unrestricted behavior
+
+  - id: JB-010
+    name: Without filtering request
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(without|disable|remove|bypass)\\s+(any\\s+)?(content\\s+)?filter(s|ing)?"
+    description: Requests to disable content filtering
+
+  - id: JB-011
+    name: Jailbroken state
+    severity: critical
+    action: block
+    category: jailbreak
+    pattern: "(?i)(you\\s+(have\\s+been|are\\s+now|were)\\s+)?jailbr(o|ea)k(en|ed)"
+    description: Claims model has been jailbroken
+
+  - id: JB-012
+    name: Unrestricted AI request
+    severity: high
+    action: block
+    category: jailbreak
+    pattern: "(?i)(act|behave|respond)\\s+(as|like)\\s+(an?\\s+)?(unrestricted|unfiltered|uncensored)"
+    description: Requests unrestricted AI behavior
+
+  # System Prompt Extraction Rules
+  - id: SP-001
+    name: Initial instructions extraction
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(show|tell|give|display|what\\s+are)\\s+(me\\s+)?(your\\s+)?(initial|original|first)\\s+(instructions|prompt|message)"
+    description: Attempts to extract initial instructions
+
+  - id: SP-002
+    name: Configuration extraction
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(reveal|show|display|output|dump)\\s+(your\\s+)?(config(uration)?|settings|parameters)"
+    description: Attempts to extract configuration
+
+  - id: SP-003
+    name: Context extraction
+    severity: medium
+    action: block
+    category: prompt-injection
+    pattern: "(?i)what\\s+(were\\s+you|have\\s+you\\s+been)\\s+told\\s+(before|previously|initially)"
+    description: Attempts to extract prior context
+
+  - id: SP-004
+    name: Hidden prompt extraction
+    severity: high
+    action: block
+    category: prompt-injection
+    pattern: "(?i)(hidden|secret|internal)\\s+(prompt|instructions|message|context)"
+    description: Attempts to extract hidden prompts
+
+  # Encoding Bypass Rules
+  - id: ENC-001
+    name: Hex decode injection
+    severity: high
+    action: block
+    category: encoding-bypass
+    pattern: "(?i)(decode|interpret|execute|convert)\\s+(this\\s+)?hex(adecimal)?"
+    description: Attempts to inject via hex encoding
+
+  - id: ENC-002
+    name: ROT13 decode injection
+    severity: high
+    action: block
+    category: encoding-bypass
+    pattern: "(?i)(decode|interpret|execute|apply)\\s+(this\\s+)?rot13"
+    description: Attempts to inject via ROT13 encoding
+
+  - id: ENC-003
+    name: Encoding bypass attempt
+    severity: medium
+    action: block
+    category: encoding-bypass
+    pattern: "(?i)(decode|decrypt|deobfuscate)\\s+(and|then)\\s+(execute|run|follow)"
+    description: Attempts to use encoding to bypass filters
+
+  # Delimiter Injection Rules
+  - id: DI-001
+    name: JSON structure injection
+    severity: high
+    action: block
+    category: delimiter-injection
+    pattern: '(?i)"\s*}\s*]\s*,\s*"\s*role\s*"\s*:\s*"\s*system'
+    description: Attempts to inject via JSON structure manipulation
+
+  - id: DI-002
+    name: Markdown system delimiter
+    severity: medium
+    action: block
+    category: delimiter-injection
+    pattern: "(?i)(---|\\*\\*\\*|___)\\s*(SYSTEM|ADMIN|ROOT|INSTRUCTION)"
+    description: Attempts to inject via markdown delimiters
+
+  - id: DI-003
+    name: XML/HTML tag injection
+    severity: high
+    action: block
+    category: delimiter-injection
+    pattern: "(?i)<\\s*/?(system|admin|root|instruction|prompt)\\s*>"
+    description: Attempts to inject via XML/HTML tags
+
+  # Indirect Injection Rules
+  - id: II-001
+    name: Function call injection
+    severity: high
+    action: block
+    category: indirect-injection
+    pattern: "(?i)(call|invoke|execute|run)\\s+(the\\s+)?(disable|bypass|unlock|override)_?(safety|security|filter)"
+    description: Attempts to call security-disabling functions
+
+  - id: II-002
+    name: API unlock request
+    severity: high
+    action: block
+    category: indirect-injection
+    pattern: "(?i)(make|send)\\s+(an?\\s+)?api\\s+(call|request)\\s+to\\s+(unlock|disable|bypass)"
+    description: Attempts to unlock via API call
+
+  - id: II-003
+    name: Plugin/extension injection
+    severity: high
+    action: block
+    category: indirect-injection
+    pattern: "(?i)(load|enable|install|activate)\\s+(the\\s+)?(unrestricted|unsafe|bypass|jailbreak)\\s*(mode|plugin|extension|module)"
+    description: Attempts to load malicious plugins
+
+  - id: II-004
+    name: Tool abuse attempt
+    severity: medium
+    action: block
+    category: indirect-injection
+    pattern: "(?i)(use|abuse|exploit)\\s+(your\\s+)?(tools?|functions?|capabilities)\\s+to\\s+(bypass|override|disable)"
+    description: Attempts to abuse tools to bypass restrictions
+
+  - id: II-005
+    name: Generic plugin load
+    severity: medium
+    action: block
+    category: indirect-injection
+    pattern: "(?i)load\\s+(the\\s+)?\\w+(_|\\s)?(mode|plugin|extension|module)"
+    description: Attempts to load arbitrary plugins
+
+  # Unicode Evasion Rules
+  - id: UE-001
+    name: Circled letter evasion
+    severity: high
+    action: block
+    category: unicode-evasion
+    pattern: "[\u24b6-\u24e9\u2460-\u2473\u24ea-\u24ff]+"
+    description: Detects circled Unicode letters used to evade filters
+
+  - id: UE-002
+    name: Fullwidth character evasion
+    severity: high
+    action: block
+    category: unicode-evasion
+    pattern: "[\uff01-\uff5e]{4,}"
+    description: Detects fullwidth characters used to evade filters
+
+  # Additional Encoding Rules
+  - id: ENC-004
+    name: Hex string with execution
+    severity: high
+    action: block
+    category: encoding-bypass
+    pattern: "(?i)(decode|convert)?\\s*[0-9a-f]{10,}\\s*(and|then)?\\s*(execute|run)?"
+    description: Detects hex-encoded strings
+
+  - id: ENC-005
+    name: ROT13 with execution
+    severity: high
+    action: block
+    category: encoding-bypass
+    pattern: "(?i)rot13\\s+(decode|this|and|then)"
+    description: Detects ROT13 with execution intent
+
+  # Additional Delimiter Rules
+  - id: DI-004
+    name: JSON role injection
+    severity: high
+    action: block
+    category: delimiter-injection
+    pattern: '(?i)"?\s*role\s*"?\s*:\s*"?\s*(system|admin|root)'
+    description: Attempts to inject system role via JSON
+
+  - id: DI-006
+    name: JSON structure break
+    severity: high
+    action: block
+    category: delimiter-injection
+    pattern: "(?i)[\"']?\\s*}\\s*\\]\\s*,\\s*[\"']?\\s*role"
+    description: Attempts to break JSON structure
+
+  - id: DI-005
+    name: HTML comment injection
+    severity: medium
+    action: block
+    category: delimiter-injection
+    pattern: "(?i)<!--.*?(ignore|bypass|override|system).*?-->"
+    description: Attempts to inject via HTML comments
+
+  # Additional Role Manipulation
+  - id: RM-001
+    name: Named character roleplay
+    severity: high
+    action: block
+    category: role-manipulation
+    pattern: "(?i)(stay\\s+in\\s+character|as|play)\\s+(as\\s+)?\\w*(GPT|AI|Bot|Hack|Evil|Dark)"
+    description: Attempts to roleplay as named malicious characters
