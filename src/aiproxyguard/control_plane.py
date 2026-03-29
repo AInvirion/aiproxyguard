@@ -90,6 +90,7 @@ class ControlPlaneClient:
         self._telemetry_buffer: list[TelemetryEvent] = []
         self._telemetry_lock = asyncio.Lock()
         self._registered: bool = False  # Only enable telemetry after successful registration
+        self._auth_permanently_failed: bool = False  # Stop retrying on 401/403
         self._last_config_version: int = 0
         self._last_signature_version: str = ""
         self._last_ml_model_version: str = ""
@@ -211,11 +212,15 @@ class ControlPlaneClient:
             await self._register()
             if self._registered:
                 return
+            # Stop immediately on permanent auth failure (invalid/revoked key)
+            if self._auth_permanently_failed:
+                return
             # Exponential backoff: 1s, 2s, 4s
             delay = base_delay * (2 ** attempt)
             logger.info(f"Registration failed, retrying in {delay}s (attempt {attempt + 1}/{max_attempts})")
             await asyncio.sleep(delay)
-        logger.warning("Initial registration failed after retries; will retry in heartbeat loop")
+        if not self._auth_permanently_failed:
+            logger.warning("Initial registration failed after retries; will retry in heartbeat loop")
 
     async def stop(self) -> None:
         """Stop the control plane client."""
@@ -252,7 +257,18 @@ class ControlPlaneClient:
             )
             response.raise_for_status()
             self._registered = True
+            self._auth_permanently_failed = False  # Clear any previous auth failure
             logger.info(f"Registered with control plane as {self.instance_id}")
+        except httpx.HTTPStatusError as e:
+            # Check for permanent auth failures (invalid/revoked API key)
+            if e.response.status_code in (401, 403):
+                self._auth_permanently_failed = True
+                logger.error(
+                    "API key invalid or revoked. Control plane features disabled. "
+                    "Update your API key in the config and restart the proxy."
+                )
+            else:
+                logger.error(f"Failed to register with control plane: {e}")
         except httpx.HTTPError as e:
             logger.error(f"Failed to register with control plane: {e}")
             # Telemetry stays disabled until registration succeeds
@@ -261,12 +277,24 @@ class ControlPlaneClient:
         """Send periodic heartbeats to the control plane."""
         while True:
             try:
+                # Exit loop if auth permanently failed (invalid/revoked API key)
+                if self._auth_permanently_failed:
+                    logger.info(
+                        "Heartbeat loop stopped due to invalid API key. "
+                        "Proxy continues in offline mode."
+                    )
+                    break
+
                 await asyncio.sleep(self.config.heartbeat_interval)
+
                 # Retry registration if not yet registered
                 if not self._registered:
                     await self._register()
                     if self._registered:
                         logger.info("Registration succeeded on retry")
+                    elif self._auth_permanently_failed:
+                        continue  # Will exit on next iteration
+
                 await self._send_heartbeat()
                 await self._flush_telemetry()
             except asyncio.CancelledError:
@@ -327,6 +355,16 @@ class ControlPlaneClient:
                 # Check for expiring licenses even if signature version unchanged
                 await self._refresh_expiring_licenses()
 
+        except httpx.HTTPStatusError as e:
+            # Check for permanent auth failures (API key revoked while running)
+            if e.response.status_code in (401, 403):
+                self._auth_permanently_failed = True
+                logger.error(
+                    "API key invalid or revoked. Control plane features disabled. "
+                    "Update your API key in the config and restart the proxy."
+                )
+            else:
+                logger.warning(f"Heartbeat failed: {e}")
         except httpx.HTTPError as e:
             logger.warning(f"Heartbeat failed: {e}")
 
