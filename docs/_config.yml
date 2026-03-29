@@ -11,13 +11,4 @@ remote_theme: carlosperate/jekyll-theme-rtd
 markdown: kramdown
 highlighter: rouge
 
-# Navigation (sidebar)
-nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Configuration: configuration.md
-  - Deployment: deployment.md
-  - API Reference: api-reference.md
-  - Security: security.md
-  - Guides:
-    - DigitalOcean: guides/digitalocean-guide.md
+# Navigation is controlled via front matter (nav_order, has_children, parent)

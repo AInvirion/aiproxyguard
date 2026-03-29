@@ -1,10 +1,11 @@
 ---
 title: Deployment
+nav_order: 4
 ---
 
 # Deployment
 
-> **DigitalOcean users**: See the dedicated [DigitalOcean Guide](digitalocean-guide.md) for step-by-step App Platform deployment.
+> **DigitalOcean users**: See the dedicated [DigitalOcean Guide](guides/digitalocean-guide.md) for step-by-step App Platform deployment.
 
 ## Docker
 

@@ -1,5 +1,7 @@
 ---
-title: DigitalOcean Deployment Guide
+title: DigitalOcean
+parent: Guides
+nav_order: 1
 ---
 
 # DigitalOcean Deployment Guide
