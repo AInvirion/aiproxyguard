@@ -33,7 +33,7 @@ from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.signatures.loader import load_signatures
 from aiproxyguard.metrics import MetricsCollector
-from aiproxyguard.logging import get_logger
+from aiproxyguard.logging import get_logger, update_logging
 from aiproxyguard.control_plane import init_client, get_client
 
 logger = get_logger("server")
@@ -62,7 +62,59 @@ async def on_startup(app: web.Application) -> None:
 
         cp_client.set_signature_update_callback(on_signature_update)
 
+        # Register ML model update callback for tier-based model sync
+        def on_ml_model_update(model_data: bytes, license_data: dict) -> None:
+            """Hot-reload ML model from control plane."""
+            if scanner.load_ml_from_bytes(model_data):
+                model_id = license_data.get("model_id", "unknown")
+                tier = license_data.get("tier", "unknown")
+                logger.info(
+                    "ML model updated from control plane",
+                    extra={"model_id": model_id, "tier": tier},
+                )
+
+        cp_client.set_ml_model_callback(on_ml_model_update)
+
+        # Register logging config update callback
+        def on_logging_update(config: dict) -> None:
+            """Update logging settings from control plane."""
+            update_logging(
+                level=config.get("level"),
+                format=config.get("format"),
+                redact_keys=config.get("redact_keys"),
+            )
+
+        cp_client.set_logging_update_callback(on_logging_update)
+
+        # Register scanner config update callback
+        def on_scanner_update(config: dict) -> None:
+            """Update scanner settings from control plane."""
+            scanner.update_scanner_config(config)
+
+        cp_client.set_scanner_update_callback(on_scanner_update)
+
+        # Register ML classifier config update callback
+        def on_ml_config_update(config: dict) -> None:
+            """Update ML classifier settings from control plane."""
+            scanner.update_ml_config(config)
+
+        cp_client.set_ml_config_update_callback(on_ml_config_update)
+
+        # Register security config update callback
+        def on_security_update(config: dict) -> None:
+            """Update security settings from control plane."""
+            app_config: Config = app["config"]
+            if "failure_mode" in config:
+                app_config.security.failure_mode = config["failure_mode"]
+            if "scanner_timeout_ms" in config:
+                app_config.security.scanner_timeout_ms = config["scanner_timeout_ms"]
+
+        cp_client.set_security_update_callback(on_security_update)
+
         await cp_client.start()
+
+        # Sync ML model based on account tier (enterprise/professional models)
+        await cp_client.sync_ml_model()
 
 
 async def on_cleanup(app: web.Application) -> None:
@@ -581,8 +633,59 @@ async def _run_tls_server(config: Config) -> None:
 
             cp_client.set_signature_update_callback(on_signature_update)
 
+            # Register ML model update callback for tier-based model sync
+            def on_ml_model_update(model_data: bytes, license_data: dict) -> None:
+                """Hot-reload ML model from control plane."""
+                if scanner.load_ml_from_bytes(model_data):
+                    model_id = license_data.get("model_id", "unknown")
+                    tier = license_data.get("tier", "unknown")
+                    logger.info(
+                        "ML model updated from control plane",
+                        extra={"model_id": model_id, "tier": tier},
+                    )
+
+            cp_client.set_ml_model_callback(on_ml_model_update)
+
+            # Register logging config update callback
+            def on_logging_update(log_config: dict) -> None:
+                """Update logging settings from control plane."""
+                update_logging(
+                    level=log_config.get("level"),
+                    format=log_config.get("format"),
+                    redact_keys=log_config.get("redact_keys"),
+                )
+
+            cp_client.set_logging_update_callback(on_logging_update)
+
+            # Register scanner config update callback
+            def on_scanner_update(scanner_config: dict) -> None:
+                """Update scanner settings from control plane."""
+                scanner.update_scanner_config(scanner_config)
+
+            cp_client.set_scanner_update_callback(on_scanner_update)
+
+            # Register ML classifier config update callback
+            def on_ml_config_update(ml_cfg: dict) -> None:
+                """Update ML classifier settings from control plane."""
+                scanner.update_ml_config(ml_cfg)
+
+            cp_client.set_ml_config_update_callback(on_ml_config_update)
+
+            # Register security config update callback
+            def on_security_update(security_config: dict) -> None:
+                """Update security settings from control plane."""
+                if "failure_mode" in security_config:
+                    config.security.failure_mode = security_config["failure_mode"]
+                if "scanner_timeout_ms" in security_config:
+                    config.security.scanner_timeout_ms = security_config["scanner_timeout_ms"]
+
+            cp_client.set_security_update_callback(on_security_update)
+
             # Start the control plane client
             await cp_client.start()
+
+            # Sync ML model based on account tier (enterprise/professional models)
+            await cp_client.sync_ml_model()
 
     logger.info(
         "Starting TLS intercept proxy",

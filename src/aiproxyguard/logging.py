@@ -132,3 +132,56 @@ def setup_logging(
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance."""
     return logging.getLogger(f"aiproxyguard.{name}")
+
+
+def update_logging(
+    level: str | None = None,
+    format: str | None = None,
+    redact_keys: bool | None = None,
+) -> None:
+    """Update logging configuration at runtime.
+
+    Args:
+        level: New log level (debug, info, warning, error)
+        format: Log format (json, text)
+        redact_keys: Whether to redact sensitive keys
+    """
+    root = logging.getLogger("aiproxyguard")
+
+    if level is not None:
+        new_level = getattr(logging, level.upper(), None)
+        if new_level is not None:
+            root.setLevel(new_level)
+            get_logger("logging").info(
+                "Log level updated",
+                extra={"new_level": level},
+            )
+
+    # Format and redaction changes require handler reconfiguration
+    if format is not None or redact_keys is not None:
+        for handler in root.handlers:
+            # Update format if specified
+            if format is not None:
+                if format == "json":
+                    handler.setFormatter(JSONFormatter())
+                else:
+                    handler.setFormatter(logging.Formatter(
+                        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                    ))
+
+            # Update redaction filter if specified
+            if redact_keys is not None:
+                # Remove existing redaction filters
+                handler.filters = [
+                    f for f in handler.filters
+                    if not isinstance(f, RedactingFilter)
+                ]
+                # Add new filter if enabled
+                if redact_keys:
+                    handler.addFilter(RedactingFilter())
+
+        if format is not None:
+            get_logger("logging").info(
+                "Log format updated",
+                extra={"new_format": format},
+            )

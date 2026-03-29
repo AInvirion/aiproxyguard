@@ -97,6 +97,10 @@ class ControlPlaneClient:
         self._policy_update_callback: Callable[[dict], None] | None = None
         self._signature_update_callback: Callable[[SignatureSet], None] | None = None
         self._ml_model_callback: Callable[[bytes, dict], None] | None = None
+        self._logging_update_callback: Callable[[dict], None] | None = None
+        self._scanner_update_callback: Callable[[dict], None] | None = None
+        self._ml_config_update_callback: Callable[[dict], None] | None = None
+        self._security_update_callback: Callable[[dict], None] | None = None
         self._manifest_verifier = manifest_verifier or get_verifier()
         self._cached_license: dict | None = None
         self._cached_license_model_id: str | None = None
@@ -144,6 +148,45 @@ class ControlPlaneClient:
         whenever a new ML model is downloaded and decrypted.
         """
         self._ml_model_callback = callback
+
+    def set_logging_update_callback(self, callback: Callable[[dict], None]) -> None:
+        """Set callback for logging config updates.
+
+        The callback will be invoked with logging config dict containing:
+        - level: Log level (debug, info, warning, error)
+        - format: Log format (json, text)
+        - redact_keys: Whether to redact sensitive keys
+        """
+        self._logging_update_callback = callback
+
+    def set_scanner_update_callback(self, callback: Callable[[dict], None]) -> None:
+        """Set callback for scanner config updates.
+
+        The callback will be invoked with scanner config dict containing:
+        - enabled: Master enable/disable
+        - regex: Enable regex scanning
+        - heuristics: Enable heuristics scanning
+        - ml_classifier: Enable ML classifier
+        """
+        self._scanner_update_callback = callback
+
+    def set_ml_config_update_callback(self, callback: Callable[[dict], None]) -> None:
+        """Set callback for ML classifier config updates.
+
+        The callback will be invoked with ML config dict containing:
+        - threshold: Confidence threshold (0.0-1.0)
+        - action: Action on detection (block, warn, log)
+        """
+        self._ml_config_update_callback = callback
+
+    def set_security_update_callback(self, callback: Callable[[dict], None]) -> None:
+        """Set callback for security config updates.
+
+        The callback will be invoked with security config dict containing:
+        - failure_mode: Failure mode (open, closed)
+        - scanner_timeout_ms: Scanner timeout in milliseconds
+        """
+        self._security_update_callback = callback
 
     async def start(self) -> None:
         """Start the control plane client (register and begin heartbeat)."""
@@ -255,7 +298,11 @@ class ControlPlaneClient:
             new_tier = data.get("tier", "free")
             if new_tier != self._tier:
                 logger.info(f"Account tier changed: {self._tier} -> {new_tier}")
+                old_tier = self._tier
                 self._tier = new_tier
+                # Sync ML model when tier changes (e.g., upgrade to enterprise)
+                if self._ml_model_callback:
+                    await self.sync_ml_model()
 
             # Check if config version changed
             server_config_version = data.get("config_version", 0)
@@ -346,7 +393,7 @@ class ControlPlaneClient:
                 logger.debug(f"Error checking license expiration for {bundle_id}: {e}")
 
     async def _fetch_and_apply_policy(self) -> None:
-        """Fetch active policy from control plane and apply it."""
+        """Fetch active policy from control plane and apply all config sections."""
         try:
             # Pass instance_id to get instance-specific policy
             response = await self.client.get(
@@ -360,14 +407,49 @@ class ControlPlaneClient:
                 f"Fetched policy '{policy_data.get('name')}' version {policy_data.get('version')}"
             )
 
+            config = policy_data.get("config", {})
+
+            # Apply policy/detection settings
             if self._policy_update_callback:
-                config = policy_data.get("config", {})
-                # Translate cloud config format to PolicyEngine format
                 translated = self._translate_policy_config(config)
                 self._policy_update_callback(translated)
                 logger.info("Policy engine updated with new config")
-            else:
-                logger.warning("No policy update callback registered")
+
+            # Apply logging settings
+            logging_config = config.get("logging")
+            if logging_config and self._logging_update_callback:
+                self._logging_update_callback(logging_config)
+                logger.info(
+                    "Logging config updated",
+                    extra={"config": logging_config},
+                )
+
+            # Apply scanner settings
+            scanner_config = config.get("scanner")
+            if scanner_config and self._scanner_update_callback:
+                self._scanner_update_callback(scanner_config)
+                logger.info(
+                    "Scanner config updated",
+                    extra={"config": scanner_config},
+                )
+
+            # Apply ML classifier settings
+            ml_config = config.get("ml_classifier")
+            if ml_config and self._ml_config_update_callback:
+                self._ml_config_update_callback(ml_config)
+                logger.info(
+                    "ML classifier config updated",
+                    extra={"config": ml_config},
+                )
+
+            # Apply security settings
+            security_config = config.get("security")
+            if security_config and self._security_update_callback:
+                self._security_update_callback(security_config)
+                logger.info(
+                    "Security config updated",
+                    extra={"config": security_config},
+                )
 
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch active policy: {e}")

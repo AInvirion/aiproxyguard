@@ -157,3 +157,49 @@ class ScannerPipeline:
             from pathlib import Path
             path = Path(model_path) if model_path else None
             self._ml_classifier.reload(path)
+
+    def load_ml_from_bytes(self, model_data: bytes) -> bool:
+        """Load ML model from bytes (e.g., from control plane sync).
+
+        Args:
+            model_data: Decrypted model bytes from control plane.
+
+        Returns:
+            True if loading was successful.
+        """
+        if self._ml_classifier:
+            return self._ml_classifier.load_from_bytes(model_data)
+        return False
+
+    def update_scanner_config(self, config: dict) -> None:
+        """Update scanner configuration from control plane.
+
+        Args:
+            config: Scanner config dict with keys:
+                - enabled: Master enable/disable
+                - regex: Enable regex scanning
+                - heuristics: Enable heuristics scanning
+                - ml_classifier: Enable ML classifier
+        """
+        if "enabled" in config:
+            self._config.enabled = config["enabled"]
+        if "regex" in config:
+            self._config.regex = config["regex"]
+        if "heuristics" in config:
+            self._config.heuristics = config["heuristics"]
+        if "ml_classifier" in config:
+            self._config.ml_classifier = config["ml_classifier"]
+
+    def update_ml_config(self, config: dict) -> None:
+        """Update ML classifier configuration from control plane.
+
+        Args:
+            config: ML config dict with keys:
+                - threshold: Confidence threshold (0.0-1.0)
+                - action: Action on detection (block, warn, log)
+        """
+        if self._ml_classifier:
+            if "threshold" in config:
+                self._ml_classifier._config.threshold = config["threshold"]
+            if "action" in config:
+                self._ml_classifier._config.action = config["action"]
