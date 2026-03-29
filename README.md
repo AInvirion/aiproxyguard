@@ -10,7 +10,7 @@ LLM Security Proxy with Prompt Injection Detection.
 
 AIProxyGuard sits between your application and LLM providers to detect and block malicious inputs before they reach the model. Point your OpenAI/Anthropic SDK at the proxy instead of directly at the provider.
 
-![AIProxyGuard Flow](https://raw.githubusercontent.com/AInvirion/aiproxyguard/main/docs/diagram.png)
+![AIProxyGuard Flow](https://ainvirion.github.io/aiproxyguard/diagram.png)
 
 ## Quick Start
 
