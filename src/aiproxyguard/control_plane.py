@@ -50,24 +50,70 @@ def _get_instance_id() -> str:
     return hashlib.sha256(unique_str.encode()).hexdigest()[:32]
 
 
-def _extract_yaml_from_tar_gz(data: bytes) -> str:
-    """Extract and concatenate YAML files from a tar.gz bundle.
+@dataclass
+class BundleContent:
+    """Content extracted from a bundle tar.gz."""
+
+    yaml_content: str
+    model_data: bytes | None = None
+    model_config: dict | None = None
+    model_format: str | None = None  # "sklearn-joblib", "onnx", etc.
+
+
+def _extract_bundle_content(data: bytes) -> BundleContent:
+    """Extract YAML and model files from a tar.gz bundle.
 
     Args:
         data: tar.gz bytes (decrypted bundle content)
 
     Returns:
-        Concatenated YAML content with section markers
+        BundleContent with YAML and optional model data
     """
     yaml_parts = []
+    model_data = None
+    model_config = None
+    model_format = None
+
     with tarfile.open(fileobj=BytesIO(data), mode="r:gz") as tar:
         for member in tar.getmembers():
-            if member.isfile() and (member.name.endswith(".yaml") or member.name.endswith(".yml")):
+            if not member.isfile():
+                continue
+
+            # Extract YAML files
+            if member.name.endswith(".yaml") or member.name.endswith(".yml"):
                 f = tar.extractfile(member)
                 if f:
                     content = f.read().decode("utf-8")
                     yaml_parts.append(f"# === {member.name} ===\n{content}")
-    return "\n".join(yaml_parts)
+
+            # Extract model files
+            elif member.name.endswith(".joblib") or member.name.endswith(".pkl"):
+                f = tar.extractfile(member)
+                if f:
+                    model_data = f.read()
+                    model_format = "sklearn-joblib"
+                    logger.info(f"Extracted sklearn model from bundle: {member.name} ({len(model_data)} bytes)")
+
+            elif member.name.endswith(".onnx"):
+                f = tar.extractfile(member)
+                if f:
+                    model_data = f.read()
+                    model_format = "onnx"
+                    logger.info(f"Extracted ONNX model from bundle: {member.name} ({len(model_data)} bytes)")
+
+            # Extract model config
+            elif member.name.endswith("config.json") and "models/" in member.name:
+                f = tar.extractfile(member)
+                if f:
+                    import json
+                    model_config = json.loads(f.read().decode("utf-8"))
+
+    return BundleContent(
+        yaml_content="\n".join(yaml_parts),
+        model_data=model_data,
+        model_config=model_config,
+        model_format=model_format,
+    )
 
 
 def _decode_bundle_content(decrypted: bytes) -> str:
@@ -77,12 +123,13 @@ def _decode_bundle_content(decrypted: bytes) -> str:
         decrypted: Decrypted bytes (may be plain YAML or tar.gz)
 
     Returns:
-        YAML content as string
+        YAML content as string (use _extract_bundle_content for full extraction)
     """
     # Check for gzip magic bytes (0x1f 0x8b)
     if decrypted[:2] == b"\x1f\x8b":
         logger.debug("Decrypted content is tar.gz, extracting YAML files")
-        return _extract_yaml_from_tar_gz(decrypted)
+        bundle = _extract_bundle_content(decrypted)
+        return bundle.yaml_content
     else:
         return decrypted.decode("utf-8")
 
@@ -718,6 +765,20 @@ class ControlPlaneClient:
                         bundle_contents.append(result["content_info"])
                         if result.get("license"):
                             licenses[bundle_id] = result["license"]
+
+                        # Load embedded ML model if present
+                        model_data = result.get("model_data")
+                        if model_data and self._ml_model_callback:
+                            model_format = result.get("model_format", "sklearn-joblib")
+                            logger.info(
+                                f"Loading ML model from bundle {bundle_id} "
+                                f"(format={model_format}, size={len(model_data)} bytes)"
+                            )
+                            self._ml_model_callback(model_data, {
+                                "bundle_id": bundle_id,
+                                "tier": tier,
+                                "format": model_format,
+                            })
                 else:
                     # Plain bundle (free tier)
                     try:
@@ -859,6 +920,17 @@ class ControlPlaneClient:
             # Cache for offline use
             save_cache_fn(bundle_id, encrypted_bytes, license_data)
 
+            # Extract YAML and model from bundle
+            if decrypted[:2] == b"\x1f\x8b":
+                bundle_content = _extract_bundle_content(decrypted)
+                yaml_content = bundle_content.yaml_content
+                model_data = bundle_content.model_data
+                model_format = bundle_content.model_format
+            else:
+                yaml_content = decrypted.decode("utf-8")
+                model_data = None
+                model_format = None
+
             logger.debug(f"Fetched encrypted bundle {bundle_id}")
 
             return {
@@ -867,9 +939,11 @@ class ControlPlaneClient:
                     "bundle_id": bundle_id,
                     "version": bundle_info.get("version", ""),
                     "tier": bundle_info.get("tier", ""),
-                    "content": _decode_bundle_content(decrypted),
+                    "content": yaml_content,
                     "is_encrypted": True,
                 },
+                "model_data": model_data,
+                "model_format": model_format,
             }
 
         except Exception as e:
@@ -887,15 +961,29 @@ class ControlPlaneClient:
                         "aiproxyguard-encrypted-bundle-v1",
                     )
                     logger.info(f"Loaded {bundle_id} from cache (expires {license.expires_at})")
+
+                    # Extract YAML and model from cached bundle
+                    if decrypted[:2] == b"\x1f\x8b":
+                        bundle_content = _extract_bundle_content(decrypted)
+                        yaml_content = bundle_content.yaml_content
+                        model_data = bundle_content.model_data
+                        model_format = bundle_content.model_format
+                    else:
+                        yaml_content = decrypted.decode("utf-8")
+                        model_data = None
+                        model_format = None
+
                     return {
                         "license": license,
                         "content_info": {
                             "bundle_id": bundle_id,
                             "version": license_data.get("bundle_version", ""),
                             "tier": bundle_info.get("tier", ""),
-                            "content": _decode_bundle_content(decrypted),
+                            "content": yaml_content,
                             "is_encrypted": True,
                         },
+                        "model_data": model_data,
+                        "model_format": model_format,
                     }
                 except Exception as cache_err:
                     logger.error(f"Failed to load {bundle_id} from cache: {cache_err}")
@@ -929,15 +1017,40 @@ class ControlPlaneClient:
                     license.dek,
                     "aiproxyguard-encrypted-bundle-v1",
                 )
+
+                # Extract YAML and model from cached bundle
+                if decrypted[:2] == b"\x1f\x8b":
+                    bundle_content = _extract_bundle_content(decrypted)
+                    yaml_content = bundle_content.yaml_content
+                    model_data = bundle_content.model_data
+                    model_format = bundle_content.model_format
+                else:
+                    yaml_content = decrypted.decode("utf-8")
+                    model_data = None
+                    model_format = None
+
+                tier = license_data.get("tier", "unknown")
                 bundle_contents.append({
                     "bundle_id": bundle_id,
                     "version": license_data.get("bundle_version", ""),
-                    "tier": license_data.get("tier", "unknown"),
-                    "content": _decode_bundle_content(decrypted),
+                    "tier": tier,
+                    "content": yaml_content,
                     "is_encrypted": True,
                 })
                 licenses[bundle_id] = license
                 logger.info(f"Loaded cached bundle {bundle_id}")
+
+                # Load embedded ML model if present
+                if model_data and self._ml_model_callback:
+                    logger.info(
+                        f"Loading ML model from cached bundle {bundle_id} "
+                        f"(format={model_format}, size={len(model_data)} bytes)"
+                    )
+                    self._ml_model_callback(model_data, {
+                        "bundle_id": bundle_id,
+                        "tier": tier,
+                        "format": model_format,
+                    })
             except Exception as e:
                 logger.error(f"Failed to decrypt cached bundle {bundle_id}: {e}")
 
