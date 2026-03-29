@@ -11,16 +11,18 @@ nav_order: 2
 
 ```bash
 # Pull the latest image
-docker pull ovalenzuela/aiproxyguard:latest
+docker pull ghcr.io/ainvirion/aiproxyguard:latest
 
 # Run with default config
-docker run -d -p 8080:8080 ovalenzuela/aiproxyguard:latest
+docker run -d -p 8080:8080 ghcr.io/ainvirion/aiproxyguard:latest
 
 # Or with custom config
 docker run -d -p 8080:8080 \
   -v $(pwd)/config.yaml:/etc/aiproxyguard/config.yaml \
-  ovalenzuela/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 ```
+
+> **Alternative:** Also available on Docker Hub as `ovalenzuela/aiproxyguard`
 
 The default config enables:
 - OpenAI and Anthropic upstreams

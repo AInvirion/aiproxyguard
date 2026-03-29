@@ -35,6 +35,8 @@ This guide walks through deploying AIProxyGuard on DigitalOcean App Platform so 
 
 ## Option 1: App Platform (Recommended)
 
+> **Image:** Uses `ghcr.io/ainvirion/aiproxyguard`. Alternative: Docker Hub with `registry_type: DOCKER_HUB`, `registry: ovalenzuela`
+
 ### Step 1: Create App Spec
 
 Create `do-app.yaml`:
@@ -46,8 +48,8 @@ region: nyc
 services:
   - name: proxy
     image:
-      registry_type: DOCKER_HUB
-      registry: ovalenzuela
+      registry_type: GHCR
+      registry: ainvirion
       repository: aiproxyguard
       tag: latest
     instance_count: 1
@@ -124,8 +126,8 @@ region: nyc
 services:
   - name: proxy
     image:
-      registry_type: DOCKER_HUB
-      registry: ovalenzuela
+      registry_type: GHCR
+      registry: ainvirion
       repository: aiproxyguard
       tag: latest
     instance_count: 1
@@ -270,8 +272,8 @@ region: nyc
 services:
   - name: proxy
     image:
-      registry_type: DOCKER_HUB
-      registry: ovalenzuela
+      registry_type: GHCR
+      registry: ainvirion
       repository: aiproxyguard
       tag: latest
     instance_count: 2
@@ -316,7 +318,7 @@ doctl apps logs <app-id>
 ```
 
 Common issues:
-- Image pull failed → Check Docker Hub is accessible
+- Image pull failed → Check GHCR is accessible
 - Health check failing → Verify `/healthz` returns 200
 
 ### Requests Timing Out

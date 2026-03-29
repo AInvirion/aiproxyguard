@@ -9,13 +9,15 @@ nav_order: 4
 
 ## Docker
 
+> **Image:** `ghcr.io/ainvirion/aiproxyguard` (primary) or `ovalenzuela/aiproxyguard` (Docker Hub)
+
 ### Basic
 
 ```bash
 docker run -d \
   --name aiproxyguard \
   -p 8080:8080 \
-  ovalenzuela/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
 ### With Custom Config
@@ -25,7 +27,7 @@ docker run -d \
   --name aiproxyguard \
   -p 8080:8080 \
   -v $(pwd)/config.yaml:/etc/aiproxyguard/config.yaml \
-  ovalenzuela/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
 ### With Resource Limits
@@ -38,7 +40,7 @@ docker run -d \
   --memory=512m \
   --cpus=1 \
   --restart=unless-stopped \
-  ovalenzuela/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
 ### With Fleet Registration
@@ -53,7 +55,7 @@ docker run -d \
   -e AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com \
   -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-api-key-here \
   --restart=unless-stopped \
-  ovalenzuela/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
 ## Docker Compose
@@ -63,7 +65,7 @@ version: "3.8"
 
 services:
   aiproxyguard:
-    image: ovalenzuela/aiproxyguard:latest
+    image: ghcr.io/ainvirion/aiproxyguard:latest
     ports:
       - "8080:8080"
     volumes:
@@ -94,7 +96,7 @@ version: "3.8"
 
 services:
   aiproxyguard:
-    image: ovalenzuela/aiproxyguard:latest
+    image: ghcr.io/ainvirion/aiproxyguard:latest
     ports:
       - "8080:8080"
     volumes:
@@ -148,8 +150,8 @@ region: nyc
 services:
   - name: proxy
     image:
-      registry_type: DOCKER_HUB
-      registry: ovalenzuela
+      registry_type: GHCR
+      registry: ainvirion
       repository: aiproxyguard
       tag: latest
     instance_count: 1
@@ -165,6 +167,8 @@ services:
       - key: LOG_LEVEL
         value: "info"
 ```
+
+> **Alternative:** Use Docker Hub with `registry_type: DOCKER_HUB`, `registry: ovalenzuela`
 
 ### Step 2: Deploy
 
@@ -298,7 +302,7 @@ docker run -d \
   -p 80:8080 \
   -v /root/config.yaml:/etc/aiproxyguard/config.yaml \
   --restart=always \
-  ovalenzuela/aiproxyguard:latest
+  ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
 ### Step 3: Add SSL with Caddy

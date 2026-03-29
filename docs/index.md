@@ -22,13 +22,15 @@ Your App  →  AIProxyGuard  →  OpenAI/Anthropic/etc.
 
 ```bash
 # Pull and run
-docker run -d -p 8080:8080 ovalenzuela/aiproxyguard:latest
+docker run -d -p 8080:8080 ghcr.io/ainvirion/aiproxyguard:latest
 
 # Verify it's running
 curl http://localhost:8080/healthz
 ```
 
 Then point your LLM client to `http://localhost:8080/openai/v1` instead of `https://api.openai.com/v1`.
+
+> **Alternative:** Also available on Docker Hub as `ovalenzuela/aiproxyguard`
 
 ## Features
 
@@ -47,9 +49,13 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 
 | Category | Description | Default |
 |----------|-------------|---------|
-| `prompt_injection` | Instruction override attempts | Block |
+| `prompt-injection` | Instruction override attempts | Block |
 | `jailbreak` | DAN mode, persona exploits | Block |
-| `encoding_evasion` | Base64/hex obfuscation | Warn |
+| `encoding-bypass` | Base64/hex/ROT13 obfuscation | Block |
+| `delimiter-injection` | JSON/XML/markdown structure attacks | Block |
+| `indirect-injection` | Tool abuse, plugin exploits | Block |
+| `unicode-evasion` | Homoglyphs, fullwidth chars | Block |
+| `role-manipulation` | Named character roleplay attacks | Block |
 
 ## Next Steps
 
