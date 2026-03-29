@@ -22,6 +22,9 @@ htmlcov/
 
 docs/superpowers/
 
+# Local analysis scripts
+security_analysis/
+
 # Dependencies
 node_modules/
 bower_components/

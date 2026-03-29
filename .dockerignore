@@ -1,0 +1,57 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Development/Testing files
+tests/
+scripts/
+security_analysis/
+docs/
+*.md
+!README.md
+
+# Config files not needed in Docker
+config.example.yaml
+config.test.yaml
+do-app.yaml
+.env*
+.clabot
+
+# GitHub
+.github/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+.playwright-mcp/
