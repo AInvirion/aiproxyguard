@@ -335,7 +335,6 @@ class ControlPlaneClient:
             new_tier = data.get("tier", "free")
             if new_tier != self._tier:
                 logger.info(f"Account tier changed: {self._tier} -> {new_tier}")
-                old_tier = self._tier
                 self._tier = new_tier
                 # Sync ML model when tier changes (e.g., upgrade to enterprise)
                 if self._ml_model_callback:
