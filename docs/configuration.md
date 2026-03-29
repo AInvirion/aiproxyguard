@@ -214,6 +214,65 @@ control_plane:
 
 Sign up at [aiproxyguard.com](https://aiproxyguard.com) to get your API key.
 
+### Updating or Rotating API Keys
+
+If your API key is revoked, expired, or you need to rotate it, you must update the configuration and restart the proxy.
+
+**What happens when the API key is invalid:**
+
+The proxy detects 401/403 errors and stops retrying:
+```json
+{"level": "error", "message": "API key invalid or revoked. Control plane features disabled. Update your API key in the config and restart the proxy."}
+{"level": "info", "message": "Heartbeat loop stopped due to invalid API key. Proxy continues in offline mode."}
+```
+
+The proxy continues running in **offline mode** with:
+- Bundled free-tier signatures
+- Bundled free-tier ML model
+- Local configuration (no cloud sync)
+
+**To update the API key:**
+
+**Option 1: Environment Variable (Docker)**
+
+```bash
+# Update the environment variable and restart
+docker stop aiproxyguard
+docker run -d --name aiproxyguard -p 8080:8080 \
+  -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-new-api-key \
+  ovalenzuela/aiproxyguard:latest
+
+# Or with docker-compose
+docker-compose down
+# Edit .env or docker-compose.yml with new key
+docker-compose up -d
+```
+
+**Option 2: Config File (Volume Mount)**
+
+```bash
+# 1. Edit the mounted config file
+vim /path/to/config.yaml
+# Update: api_key: "your-new-api-key"
+
+# 2. Restart the container
+docker restart aiproxyguard
+```
+
+**Option 3: Kubernetes**
+
+```bash
+# Update the secret
+kubectl create secret generic aiproxyguard-secrets \
+  --from-literal=api-key=your-new-api-key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Restart the deployment
+kubectl rollout restart deployment/aiproxyguard
+```
+
+> **Note:** A restart is required because the API key is loaded at startup. Hot-reload of API keys may be added in a future version.
+
 ## Docker Volume Mounts
 
 ```bash

@@ -360,3 +360,66 @@ All deployment methods should configure health checks:
 | 100-1000 req/min | basic-xs | 1 GB | Small production |
 | 1000-10000 req/min | basic-s | 2 GB | Medium production |
 | > 10000 req/min | Multiple instances | 2+ GB each | Scale horizontally |
+
+## Troubleshooting
+
+### API Key Invalid or Revoked
+
+If you see this error in logs:
+```json
+{"level": "error", "message": "API key invalid or revoked. Control plane features disabled. Update your API key in the config and restart the proxy."}
+```
+
+**Cause:** The control plane API key is invalid, expired, or was deleted from the cloud dashboard.
+
+**Solution:**
+1. Get a new API key from [aiproxyguard.com](https://aiproxyguard.com)
+2. Update your configuration (see [Updating API Keys](configuration.md#updating-or-rotating-api-keys))
+3. Restart the proxy:
+
+```bash
+# Docker
+docker restart aiproxyguard
+
+# Docker Compose
+docker-compose restart aiproxyguard
+
+# Kubernetes
+kubectl rollout restart deployment/aiproxyguard
+
+# Systemd
+sudo systemctl restart aiproxyguard
+```
+
+**Note:** The proxy continues running in offline mode with bundled signatures while the API key is invalid.
+
+### Proxy Not Receiving Cloud Updates
+
+If signatures or policies aren't syncing:
+
+1. **Check connectivity:**
+   ```bash
+   docker exec aiproxyguard curl -s https://aiproxyguard.com/healthz
+   ```
+
+2. **Check registration status in logs:**
+   ```bash
+   docker logs aiproxyguard | grep -i "registered\|heartbeat"
+   ```
+
+3. **Verify API key is set:**
+   ```bash
+   docker exec aiproxyguard env | grep AIPROXYGUARD_CONTROL_PLANE
+   ```
+
+### Container Keeps Restarting
+
+Check logs for startup errors:
+```bash
+docker logs --tail 50 aiproxyguard
+```
+
+Common issues:
+- Invalid config YAML syntax
+- Missing required upstream URL
+- Port already in use
