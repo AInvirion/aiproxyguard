@@ -46,8 +46,8 @@ jobs:
 
       - name: Fetch latest signatures
         run: |
-          chmod +x scripts/fetch-signatures.sh
-          ./scripts/fetch-signatures.sh
+          chmod +x .github/scripts/fetch-signatures.sh
+          ./.github/scripts/fetch-signatures.sh
         env:
           SIGNATURES_DIR: signatures
           TIER: free
