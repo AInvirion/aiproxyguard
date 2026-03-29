@@ -185,27 +185,86 @@ class MLClassifier:
         self._backend = None
         self._try_load_backend()
 
-    def load_from_bytes(self, model_data: bytes) -> bool:
+    def load_from_bytes(self, model_data: bytes, model_format: str | None = None) -> bool:
         """Load model from bytes (e.g., from control plane sync).
 
-        SECURITY WARNING: This method uses joblib/pickle to deserialize bytes.
-        Only call this with data that has been cryptographically verified
-        (e.g., decrypted from an encrypted model with license validation).
+        SECURITY WARNING: This method uses joblib/pickle to deserialize bytes
+        for sklearn models. Only call with data that has been cryptographically
+        verified (e.g., decrypted from an encrypted model with license validation).
         Never call with unverified network data - this enables code execution.
 
         Args:
-            model_data: Raw model bytes (joblib serialized). MUST be from
-                       a trusted source (decrypted model or local file).
+            model_data: Raw model bytes. MUST be from a trusted source.
+            model_format: Optional format hint ("sklearn", "onnx"). Auto-detected if None.
 
         Returns:
             True if loading was successful.
         """
+        # Auto-detect format based on magic bytes if not specified
+        if model_format is None:
+            # ONNX files start with "ONNX" magic (0x4F 0x4E 0x4E 0x58 after protobuf header)
+            # or contain the ONNX protobuf tag early in the file
+            if len(model_data) > 8:
+                # Check for ONNX protobuf structure (starts with 0x08 for field 1 varint)
+                # and contains "onnx" or "ir_version" markers
+                header = model_data[:100]
+                if b"onnx" in header.lower() or b"ir_version" in header:
+                    model_format = "onnx"
+                # Also check for protobuf ONNX structure
+                elif model_data[0:1] == b"\x08" and len(model_data) > 50000:
+                    # Large protobuf file - likely ONNX
+                    model_format = "onnx"
+                else:
+                    model_format = "sklearn"
+            else:
+                model_format = "sklearn"
+
+        if model_format == "onnx":
+            return self._load_onnx_from_bytes(model_data)
+        else:
+            return self._load_sklearn_from_bytes(model_data)
+
+    def _load_onnx_from_bytes(self, model_data: bytes) -> bool:
+        """Load ONNX model from bytes."""
+        try:
+            from aiproxyguard.scanner.ml.onnx_backend import ONNXBackend
+
+            backend = ONNXBackend()
+            backend.load_from_bytes(model_data)
+
+            self._backend = backend
+            self._available = True
+
+            logger.info(
+                "ML classifier loaded from bytes (ONNX)",
+                extra={
+                    "model_id": backend.model_id,
+                    "model_version": backend.model_version,
+                    "backend": "onnx",
+                },
+            )
+            return True
+
+        except ImportError as e:
+            logger.warning(
+                f"ONNX backend dependencies not installed: {e}. "
+                "Install with: pip install aiproxyguard[enterprise]"
+            )
+            return False
+        except Exception as e:
+            logger.error(f"Failed to load ONNX model from bytes: {e}")
+            self._available = False
+            self._backend = None
+            return False
+
+    def _load_sklearn_from_bytes(self, model_data: bytes) -> bool:
+        """Load sklearn model from bytes."""
         import tempfile
 
         try:
             import joblib  # noqa: F401 - needed for tempfile suffix check
         except ImportError:
-            logger.warning("joblib not installed, cannot load model from bytes")
+            logger.warning("joblib not installed, cannot load sklearn model from bytes")
             return False
 
         try:
@@ -218,8 +277,6 @@ class MLClassifier:
                 temp_path = f.name
 
             try:
-                from pathlib import Path
-
                 backend = SklearnBackend()
                 backend.load(Path(temp_path))
 
@@ -227,10 +284,11 @@ class MLClassifier:
                 self._available = True
 
                 logger.info(
-                    "ML classifier loaded from bytes",
+                    "ML classifier loaded from bytes (sklearn)",
                     extra={
                         "model_id": backend.model_id,
                         "model_version": backend.model_version,
+                        "backend": "sklearn",
                     },
                 )
                 return True
@@ -240,7 +298,7 @@ class MLClassifier:
                 os.unlink(temp_path)
 
         except Exception as e:
-            logger.error(f"Failed to load ML model from bytes: {e}")
+            logger.error(f"Failed to load sklearn model from bytes: {e}")
             self._available = False
             self._backend = None
             return False

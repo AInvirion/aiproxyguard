@@ -180,7 +180,6 @@ class ControlPlaneClient:
         self._auth_permanently_failed: bool = False  # Stop retrying on 401/403
         self._last_config_version: int = 0
         self._last_signature_version: str = ""
-        self._last_ml_model_version: str = ""
         self._tier: str = "free"  # Updated from heartbeat response
         self._policy_update_callback: Callable[[dict], None] | None = None
         self._signature_update_callback: Callable[[SignatureSet], None] | None = None
@@ -190,8 +189,6 @@ class ControlPlaneClient:
         self._ml_config_update_callback: Callable[[dict], None] | None = None
         self._security_update_callback: Callable[[dict], None] | None = None
         self._manifest_verifier = manifest_verifier or get_verifier()
-        self._cached_license: dict | None = None
-        self._cached_license_model_id: str | None = None
         # Signature bundle tracking
         self._bundle_licenses: dict[str, dict] = {}  # bundle_id -> license_data
         self._bundle_set: SignatureBundleSet | None = None
@@ -430,10 +427,7 @@ class ControlPlaneClient:
             if new_tier != self._tier:
                 logger.info(f"Account tier changed: {self._tier} -> {new_tier}")
                 self._tier = new_tier
-                # Sync ML model when tier changes (e.g., upgrade to enterprise)
-                if self._ml_model_callback:
-                    await self.sync_ml_model()
-                # Re-sync signatures when tier changes (different tiers have different bundles)
+                # Re-sync signatures when tier changes (includes ML models from bundles)
                 await self._fetch_and_apply_signatures()
 
             # Check if config version changed (use != to handle policy switches that reset version)
@@ -1154,231 +1148,6 @@ class ControlPlaneClient:
             logger.error(f"Failed to fetch signatures: {e}")
             return []
 
-    async def fetch_latest_ml_model(self, model_type: str = "sklearn") -> dict | None:
-        """Fetch latest ML model metadata from control plane."""
-        if not self.config.enabled:
-            return None
-
-        try:
-            response = await self.client.get(
-                "/api/v1/ml-models/latest",
-                params={"model_type": model_type},
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            # 404 is expected if cloud doesn't have ML model sync yet
-            if e.response.status_code == 404:
-                logger.info("ML model endpoint not available on control plane (404)")
-            else:
-                logger.error(f"Failed to fetch latest ML model: {e}")
-            return None
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch latest ML model: {e}")
-            return None
-
-    async def fetch_ml_model_license(self, model_id: str) -> dict | None:
-        """Request a license for an ML model.
-
-        Returns license data including DEK for decryption.
-        """
-        if not self.config.enabled:
-            return None
-
-        try:
-            response = await self.client.post(
-                f"/api/v1/ml-models/{model_id}/license",
-            )
-            response.raise_for_status()
-            license_data = response.json()
-            logger.info(
-                f"Obtained license for model {model_id}, "
-                f"expires: {license_data.get('expires_at')}"
-            )
-            return license_data
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to obtain ML model license: {e}")
-            return None
-
-    async def download_ml_model(self, download_url: str) -> bytes | None:
-        """Download encrypted ML model file."""
-        try:
-            # Use a separate client for external downloads
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.get(download_url)
-                response.raise_for_status()
-                return response.content
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to download ML model: {e}")
-            return None
-
-    async def sync_ml_model(self, model_type: str = "sklearn") -> bool:
-        """Sync the latest ML model from control plane.
-
-        Downloads the model, validates license, decrypts, and calls the callback.
-
-        Returns:
-            True if sync was successful
-        """
-        if not self.config.enabled or not self._ml_model_callback:
-            return False
-
-        # Skip if not registered or auth permanently failed
-        if not self._registered or self._auth_permanently_failed:
-            logger.debug("Skipping ML model sync: not registered with control plane")
-            return False
-
-        try:
-            # Check for latest model
-            logger.info(f"Checking for ML model updates (type={model_type}, tier={self._tier})")
-            model_info = await self.fetch_latest_ml_model(model_type)
-            if not model_info:
-                logger.info("No ML model available from control plane, using bundled model")
-                return False
-
-            model_id = model_info.get("model_id")
-            model_version = model_info.get("version")
-            is_encrypted = model_info.get("is_encrypted", False)
-            is_accessible = model_info.get("is_accessible", False)
-
-            if not is_accessible:
-                logger.info(
-                    f"ML model {model_id} requires higher tier subscription"
-                )
-                return False
-
-            # Check if we already have this version
-            current_version = f"{model_id}:{model_version}"
-            if current_version == self._last_ml_model_version:
-                logger.debug(f"ML model {current_version} already loaded")
-                return True
-
-            logger.info(f"Syncing ML model {model_id} v{model_version}")
-
-            if is_encrypted:
-                return await self._sync_encrypted_model(model_id, model_version)
-            else:
-                file_url = model_info.get("file_url")
-                expected_sha256 = model_info.get("file_sha256")
-                return await self._sync_unencrypted_model(
-                    model_id, model_version, file_url, expected_sha256
-                )
-
-        except Exception as e:
-            logger.error(f"Failed to sync ML model: {e}")
-            return False
-
-    async def _sync_encrypted_model(
-        self, model_id: str, model_version: str
-    ) -> bool:
-        """Sync an encrypted ML model."""
-        from aiproxyguard.scanner.ml.license import (
-            decrypt_model,
-            is_license_valid,
-            parse_license,
-        )
-
-        # Check if we have a valid cached license
-        if (
-            self._cached_license
-            and self._cached_license_model_id == model_id
-        ):
-            try:
-                license = parse_license(self._cached_license)
-                public_key = getattr(self.config, "manifest_public_key", "")
-                valid, _ = is_license_valid(license, public_key, self._cached_license)
-                if valid:
-                    logger.debug("Using cached license")
-                else:
-                    logger.info("Cached license expired, requesting new one")
-                    self._cached_license = None
-            except Exception:
-                self._cached_license = None
-
-        # Request new license if needed
-        if not self._cached_license:
-            license_data = await self.fetch_ml_model_license(model_id)
-            if not license_data:
-                return False
-            self._cached_license = license_data
-            self._cached_license_model_id = model_id
-
-        # Download encrypted model
-        download_url = self._cached_license.get("download_url")
-        if not download_url:
-            logger.error("No download URL in license")
-            return False
-
-        encrypted_data = await self.download_ml_model(download_url)
-        if not encrypted_data:
-            return False
-
-        # Decrypt model
-        try:
-            license = parse_license(self._cached_license)
-            decrypted_data = decrypt_model(encrypted_data, license.dek)
-        except Exception as e:
-            logger.error(f"Failed to decrypt ML model: {e}")
-            self._cached_license = None  # Clear invalid license
-            return False
-
-        # Call callback with decrypted model
-        self._ml_model_callback(decrypted_data, self._cached_license)
-        self._last_ml_model_version = f"{model_id}:{model_version}"
-        logger.info(f"ML model {model_id} v{model_version} synced successfully")
-        return True
-
-    async def _sync_unencrypted_model(
-        self,
-        model_id: str,
-        model_version: str,
-        file_url: str | None,
-        expected_sha256: str | None,
-    ) -> bool:
-        """Sync an unencrypted ML model (direct download with SHA256 verification).
-
-        Downloads the model and verifies its SHA256 hash if provided.
-        """
-        try:
-            # Prefer control plane endpoint (serves from DB)
-            logger.info(f"Downloading ML model {model_id} from control plane")
-            response = await self.client.get(
-                f"/api/v1/ml-models/{model_id}/download",
-                follow_redirects=True,
-            )
-            response.raise_for_status()
-            model_data = response.content
-
-            # Verify SHA256 hash if provided
-            if expected_sha256:
-                actual_sha256 = hashlib.sha256(model_data).hexdigest()
-                if actual_sha256 != expected_sha256:
-                    logger.error(
-                        f"ML model SHA256 mismatch! Expected {expected_sha256}, got {actual_sha256}. "
-                        "Model may be corrupted or tampered with."
-                    )
-                    return False
-                logger.info(f"ML model SHA256 verified: {actual_sha256[:16]}...")
-            else:
-                logger.warning(
-                    "No SHA256 hash provided for ML model verification. "
-                    "Cannot verify model integrity."
-                )
-
-            # Call callback with model data
-            self._ml_model_callback(model_data, {"model_id": model_id, "version": model_version})
-            self._last_ml_model_version = f"{model_id}:{model_version}"
-            logger.info(f"ML model {model_id} v{model_version} synced successfully")
-            return True
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to download ML model: {e}")
-            return False
-
-    def clear_ml_license_cache(self) -> None:
-        """Clear cached ML model license (forces refresh on next sync)."""
-        self._cached_license = None
-        self._cached_license_model_id = None
-        logger.debug("ML license cache cleared")
 
 
 # Global client instance

@@ -119,9 +119,6 @@ async def on_startup(app: web.Application) -> None:
 
         await cp_client.start()
 
-        # Sync ML model based on account tier (enterprise/professional models)
-        await cp_client.sync_ml_model()
-
 
 async def on_cleanup(app: web.Application) -> None:
     """Close shared HTTP session and stop control plane client."""
@@ -694,9 +691,6 @@ async def _run_tls_server(config: Config) -> None:
 
             # Start the control plane client
             await cp_client.start()
-
-            # Sync ML model based on account tier (enterprise/professional models)
-            await cp_client.sync_ml_model()
 
     logger.info(
         "Starting TLS intercept proxy",
