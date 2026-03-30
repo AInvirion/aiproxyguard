@@ -167,6 +167,70 @@ client = OpenAI(
 
 ---
 
+## Connect to Control Plane (Recommended)
+
+Register your proxy with [aiproxyguard.com](https://aiproxyguard.com) to enable:
+- Automatic signature updates (new threat patterns)
+- Fleet management dashboard
+- Telemetry and analytics
+
+### Step 1: Get Your API Key
+
+1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
+2. Create a new proxy instance in the dashboard
+3. Copy your API key
+
+### Step 2: Add Environment Variables
+
+**For One-Click or Web UI deployments:**
+
+1. Go to your app in the [DO Console](https://cloud.digitalocean.com/apps)
+2. Click **Settings** → **App-Level Environment Variables**
+3. Add these variables:
+
+| Variable | Value |
+|----------|-------|
+| `AIPROXYGUARD_CONTROL_PLANE_ENABLED` | `true` |
+| `AIPROXYGUARD_CONTROL_PLANE_URL` | `https://aiproxyguard.com` |
+| `AIPROXYGUARD_CONTROL_PLANE_API_KEY` | `your-api-key-here` |
+
+4. Click **Save** → The app will redeploy automatically
+
+**For doctl deployments:**
+
+Add to your `do-app.yaml`:
+
+```yaml
+services:
+  - name: proxy
+    # ... existing config ...
+    envs:
+      - key: AIPROXYGUARD_CONTROL_PLANE_ENABLED
+        value: "true"
+      - key: AIPROXYGUARD_CONTROL_PLANE_URL
+        value: "https://aiproxyguard.com"
+      - key: AIPROXYGUARD_CONTROL_PLANE_API_KEY
+        value: "your-api-key-here"
+        type: SECRET
+```
+
+Then update:
+```bash
+doctl apps update <app-id> --spec do-app.yaml
+```
+
+### Step 3: Verify Registration
+
+Check the logs for successful registration:
+```bash
+doctl apps logs <app-id> | grep "control plane"
+# {"level": "info", "message": "Connected to control plane", "instance_id": "..."}
+```
+
+Or in the DO Console: **Apps** → **aiproxyguard** → **Runtime Logs**
+
+---
+
 ## Advanced Configuration
 
 ### Internal Network (More Secure)
