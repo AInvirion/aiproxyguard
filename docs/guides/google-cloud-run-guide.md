@@ -8,10 +8,10 @@ nav_order: 4
 
 Deploy AIProxyGuard on Google Cloud Run as an LLM security proxy.
 
-| Option | Best For | Cost |
-|--------|----------|------|
-| [1. Cloud Console (Recommended)](#option-1-cloud-console-recommended) | Simple setup, visual interface | Generous free tier |
-| [2. gcloud CLI](#option-2-gcloud-cli) | Automation, CI/CD | Generous free tier |
+| Option | Best For |
+|--------|----------|
+| [1. Cloud Console (Recommended)](#option-1-cloud-console-recommended) | Simple setup, visual interface |
+| [2. gcloud CLI](#option-2-gcloud-cli) | Automation, CI/CD |
 
 ## Option 1: Cloud Console (Recommended)
 
@@ -271,12 +271,12 @@ gcloud run services update aiproxyguard \
   --memory 1Gi
 ```
 
-| Traffic Level | Min/Max Instances | CPU | Memory | Est. Monthly Cost |
-|---------------|-------------------|-----|--------|-------------------|
-| Development | 0/1 | 1 | 512Mi | Free tier |
-| Small Prod | 1/5 | 1 | 512Mi | ~$20-50 |
-| Medium Prod | 1/10 | 2 | 1Gi | ~$50-150 |
-| Large Prod | 2/20 | 2 | 2Gi | ~$150-400 |
+| Traffic Level | Min/Max Instances | CPU | Memory |
+|---------------|-------------------|-----|--------|
+| Development | 0/1 | 1 | 512Mi |
+| Small Prod | 1/5 | 1 | 512Mi |
+| Medium Prod | 1/10 | 2 | 1Gi |
+| Large Prod | 2/20 | 2 | 2Gi |
 
 ### Custom Domain
 
@@ -314,26 +314,6 @@ gcloud run services logs read aiproxyguard \
 **Metrics:**
 1. Go to Cloud Run → your service → **Metrics**
 2. View Request count, Latency, Container instances, CPU/Memory utilization
-
----
-
-## Pricing
-
-**Free Tier (per month, never expires):**
-- 180,000 vCPU-seconds
-- 360,000 GiB-seconds
-- 2 million requests
-- 1 GB egress (North America)
-
-**Beyond Free Tier:**
-- CPU: ~$0.000024 per vCPU-second
-- Memory: ~$0.0000025 per GiB-second
-- Requests: $0.40 per million
-
-**Key benefits:**
-- No charges when scaled to zero
-- Per-100ms billing (not per-hour)
-- Free tier resets monthly and is generous
 
 ---
 

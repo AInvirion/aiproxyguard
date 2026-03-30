@@ -8,10 +8,10 @@ nav_order: 2
 
 Deploy AIProxyGuard on AWS Lightsail Container Service as an LLM security proxy.
 
-| Option | Best For | Cost |
-|--------|----------|------|
-| [1. Container Service (Recommended)](#option-1-container-service-recommended) | Simple setup, managed containers | From $7/mo |
-| [2. AWS CLI](#option-2-aws-cli) | Automation, CI/CD | From $7/mo |
+| Option | Best For |
+|--------|----------|
+| [1. Container Service (Recommended)](#option-1-container-service-recommended) | Simple setup, managed containers |
+| [2. AWS CLI](#option-2-aws-cli) | Automation, CI/CD |
 
 ## Option 1: Container Service (Recommended)
 
@@ -27,9 +27,9 @@ Deploy the pre-built container image using the Lightsail console.
 
 1. Select your **AWS Region** (closest to your apps)
 2. Choose your capacity:
-   - **Nano ($7/mo)** - 512 MB RAM, 0.25 vCPU - Development/testing
-   - **Micro ($10/mo)** - 1 GB RAM, 0.5 vCPU - Small production
-   - **Small ($25/mo)** - 2 GB RAM, 1 vCPU - Production
+   - **Nano** - 512 MB RAM, 0.25 vCPU - Development/testing
+   - **Micro** - 1 GB RAM, 0.5 vCPU - Small production
+   - **Small** - 2 GB RAM, 1 vCPU - Production
 3. Choose **Scale**: 1 (can increase later)
 
 ### Step 3: Configure Deployment
@@ -325,12 +325,12 @@ aws lightsail update-container-service \
   --scale 2
 ```
 
-| Traffic Level | Power | Scale | Monthly Cost |
-|---------------|-------|-------|--------------|
-| Development | nano | 1 | $7 |
-| Small Prod | micro | 1 | $10 |
-| Medium Prod | small | 2 | $50 |
-| Large Prod | medium | 3 | $150 |
+| Traffic Level | Power | Scale |
+|---------------|-------|-------|
+| Development | nano | 1 |
+| Small Prod | micro | 1 |
+| Medium Prod | small | 2 |
+| Large Prod | medium | 3 |
 
 ### Private Deployment (VPC)
 

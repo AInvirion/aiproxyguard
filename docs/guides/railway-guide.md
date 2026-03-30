@@ -6,12 +6,12 @@ nav_order: 5
 
 # Railway Deployment Guide
 
-Deploy AIProxyGuard on Railway as an LLM security proxy. Railway is popular with startups for its developer-friendly experience and simple pricing.
+Deploy AIProxyGuard on Railway as an LLM security proxy. Railway is popular with startups for its developer-friendly experience.
 
-| Option | Best For | Cost |
-|--------|----------|------|
-| [1. Dashboard (Recommended)](#option-1-dashboard-recommended) | Simple setup, visual interface | $5/mo Hobby |
-| [2. Railway CLI](#option-2-railway-cli) | Automation, CI/CD | $5/mo Hobby |
+| Option | Best For |
+|--------|----------|
+| [1. Dashboard (Recommended)](#option-1-dashboard-recommended) | Simple setup, visual interface |
+| [2. Railway CLI](#option-2-railway-cli) | Automation, CI/CD |
 
 ## Option 1: Dashboard (Recommended)
 
@@ -245,8 +245,8 @@ Railway scales based on your plan limits:
 
 | Plan | RAM | CPU | Best For |
 |------|-----|-----|----------|
-| Hobby ($5/mo) | 512MB | 0.5 vCPU | Development, small prod |
-| Pro ($20/mo) | 8GB | 8 vCPU | Production, scaling |
+| Hobby | 512MB | 0.5 vCPU | Development, small prod |
+| Pro | 8GB | 8 vCPU | Production, scaling |
 
 To increase resources beyond defaults, upgrade to Pro plan in Project Settings.
 
@@ -266,23 +266,6 @@ railway logs --follow
 **Metrics:**
 1. Go to your service → **Metrics**
 2. View CPU, Memory, Network usage
-
----
-
-## Pricing
-
-| Plan | Monthly | Included Credits | Best For |
-|------|---------|------------------|----------|
-| Free | $0 | $1 | Experimentation only |
-| Hobby | $5 | $5 | Indie devs, small projects |
-| Pro | $20 | $20 | Teams, production |
-
-**Resource costs (beyond credits):**
-- RAM: $10/GB per month
-- CPU: $20/vCPU per month
-- Network: $0.05/GB egress
-
-**Hobby plan** is the sweet spot - $5/month covers most small production workloads.
 
 ---
 

@@ -8,11 +8,11 @@ nav_order: 1
 
 Deploy AIProxyGuard on DigitalOcean App Platform as an LLM security proxy.
 
-| Option | Best For | Cost |
-|--------|----------|------|
-| [1. Container Image (Recommended)](#option-1-deploy-container-image-recommended) | Simple setup, pre-built image | From $5/mo |
-| [2. One-Click Deploy](#option-2-one-click-deploy) | Quick start from repo | From $5/mo |
-| [3. CLI with doctl](#option-3-cli-with-doctl) | Automation, CI/CD | From $5/mo |
+| Option | Best For |
+|--------|----------|
+| [1. Container Image (Recommended)](#option-1-deploy-container-image-recommended) | Simple setup, pre-built image |
+| [2. One-Click Deploy](#option-2-one-click-deploy) | Quick start from repo |
+| [3. CLI with doctl](#option-3-cli-with-doctl) | Automation, CI/CD |
 
 ## Option 1: Deploy Container Image (Recommended)
 
@@ -44,9 +44,9 @@ Deploy the pre-built container image from GitHub Container Registry or Docker Hu
 
 1. Keep the default **Web Service** type
 2. Choose your plan:
-   - **Basic ($5/mo)** - Development/testing
-   - **Basic ($10/mo)** - Small production
-   - **Professional ($25/mo)** - Production with auto-scaling
+   - **Basic** - Development/testing
+   - **Basic** - Small production
+   - **Professional** - Production with auto-scaling
 3. Click **Next**
 
 ### Step 4: Configure App
@@ -92,7 +92,7 @@ Deploy directly from the GitHub repository.
 
 1. Click the button above
 2. Log in to your DigitalOcean account
-3. Review the default settings (Basic plan, $5/mo)
+3. Review the default settings (Basic plan)
 4. Click **Create Resources**
 5. Wait for deployment (~2 minutes)
 6. Copy your app URL: `https://aiproxyguard-xxxxx.ondigitalocean.app`
@@ -135,7 +135,7 @@ services:
       repository: aiproxyguard
       tag: latest
     instance_count: 1
-    instance_size_slug: basic-xxs  # $5/mo
+    instance_size_slug: basic-xxs
     http_port: 8080
     health_check:
       http_path: /healthz
@@ -312,12 +312,12 @@ Fork the repo, customize `config.docker.yaml`, then deploy from your repo using 
 
 ### Scaling
 
-| Traffic Level | Instances | Size | Monthly Cost |
-|---------------|-----------|------|--------------|
-| Development | 1 | basic-xxs | $5 |
-| Small Prod | 1 | basic-xs | $10 |
-| Medium Prod | 2 | basic-s | $24 |
-| Large Prod | 3+ | basic-m | $60+ |
+| Traffic Level | Instances | Size |
+|---------------|-----------|------|
+| Development | 1 | basic-xxs |
+| Small Prod | 1 | basic-xs |
+| Medium Prod | 2 | basic-s |
+| Large Prod | 3+ | basic-m |
 
 In your app settings or `do-app.yaml`:
 ```yaml

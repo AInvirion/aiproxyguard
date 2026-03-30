@@ -8,10 +8,10 @@ nav_order: 3
 
 Deploy AIProxyGuard on Azure Container Apps as an LLM security proxy.
 
-| Option | Best For | Cost |
-|--------|----------|------|
-| [1. Azure Portal (Recommended)](#option-1-azure-portal-recommended) | Simple setup, visual interface | Free tier, then pay-per-use |
-| [2. Azure CLI](#option-2-azure-cli) | Automation, CI/CD | Free tier, then pay-per-use |
+| Option | Best For |
+|--------|----------|
+| [1. Azure Portal (Recommended)](#option-1-azure-portal-recommended) | Simple setup, visual interface |
+| [2. Azure CLI](#option-2-azure-cli) | Automation, CI/CD |
 
 ## Option 1: Azure Portal (Recommended)
 
@@ -311,12 +311,12 @@ az containerapp update \
   --memory 1.0Gi
 ```
 
-| Traffic Level | Min/Max Replicas | CPU | Memory | Est. Monthly Cost |
-|---------------|------------------|-----|--------|-------------------|
-| Development | 0/1 | 0.25 | 0.5Gi | Free tier |
-| Small Prod | 1/2 | 0.5 | 1Gi | ~$30 |
-| Medium Prod | 1/5 | 1 | 2Gi | ~$60-150 |
-| Large Prod | 2/10 | 2 | 4Gi | ~$150-400 |
+| Traffic Level | Min/Max Replicas | CPU | Memory |
+|---------------|------------------|-----|--------|
+| Development | 0/1 | 0.25 | 0.5Gi |
+| Small Prod | 1/2 | 0.5 | 1Gi |
+| Medium Prod | 1/5 | 1 | 2Gi |
+| Large Prod | 2/10 | 2 | 4Gi |
 
 ### Custom Domain
 
@@ -358,22 +358,6 @@ az containerapp logs show \
 **Metrics:**
 1. Go to Container App → **Metrics**
 2. View CPU, Memory, Requests, Response time
-
----
-
-## Pricing
-
-**Free Tier (per subscription, per month):**
-- 180,000 vCPU-seconds
-- 360,000 GiB-seconds
-- 2,000,000 requests
-
-**Beyond Free Tier:**
-- vCPU: ~$0.000024 per vCPU-second
-- Memory: ~$0.000003 per GiB-second
-- Requests: $0.40 per million
-
-**Key benefit:** No charges when scaled to zero.
 
 ---
 
