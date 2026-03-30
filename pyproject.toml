@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aiproxyguard"
-version = "0.2.29"
+version = "0.2.30"
 description = "LLM Security Proxy with Prompt Injection Detection"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
     "aiohttp>=3.9.0",
+    "brotli>=1.1.0",
     "pyyaml>=6.0",
     "prometheus-client>=0.19.0",
     "cryptography>=41.0.0",
