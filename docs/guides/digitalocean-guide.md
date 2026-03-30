@@ -6,107 +6,96 @@ nav_order: 1
 
 # DigitalOcean Deployment Guide
 
-Deploy AIProxyGuard on DigitalOcean as an LLM security proxy.
+Deploy AIProxyGuard on DigitalOcean App Platform as an LLM security proxy.
 
 | Option | Best For | Cost |
 |--------|----------|------|
-| [1. Docker on Droplet](#option-1-docker-on-a-droplet-recommended) | Simple setup, full control | From $6/mo |
-| [2. One-Click Deploy](#option-2-one-click-deploy) | Quick start, no CLI | From $5/mo |
-| [3. App Platform CLI](#option-3-app-platform-cli) | Automation, CI/CD | From $5/mo |
-| [4. App Platform Web UI](#option-4-app-platform-web-ui) | Manual App Platform setup | From $5/mo |
+| [1. Container Image (Recommended)](#option-1-deploy-container-image-recommended) | Simple setup, pre-built image | From $5/mo |
+| [2. One-Click Deploy](#option-2-one-click-deploy) | Quick start from repo | From $5/mo |
+| [3. CLI with doctl](#option-3-cli-with-doctl) | Automation, CI/CD | From $5/mo |
 
-## Option 1: Docker on a Droplet (Recommended)
+## Option 1: Deploy Container Image (Recommended)
 
-The simplest way to deploy - just pull and run the container.
+Deploy the pre-built container image from GitHub Container Registry or Docker Hub.
 
-### Step 1: Create a Droplet
+### Step 1: Create App
 
-1. Go to [cloud.digitalocean.com/droplets](https://cloud.digitalocean.com/droplets)
-2. Click **Create Droplet**
-3. Choose **Docker** from the Marketplace tab (or any Linux + install Docker manually)
-4. Select size: **Basic $6/mo** is sufficient for most use cases
-5. Choose your region
-6. Add your SSH key
-7. Click **Create Droplet**
+1. Go to [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps)
+2. Click **Create App**
 
-### Step 2: SSH into the Droplet
+### Step 2: Select Container Image
 
-```bash
-ssh root@your-droplet-ip
+1. Under "Create Resource From", select **Container Image**
+2. Choose your registry:
+
+**GitHub Container Registry:**
+- Image Source: **GHCR**
+- Repository: `ainvirion/aiproxyguard`
+- Tag: `latest`
+
+**Docker Hub:**
+- Image Source: **Docker Hub**
+- Repository: `ovalenzuela/aiproxyguard`
+- Tag: `latest`
+
+3. Click **Next**
+
+### Step 3: Select Resources
+
+1. Keep the default **Web Service** type
+2. Choose your plan:
+   - **Basic ($5/mo)** - Development/testing
+   - **Basic ($10/mo)** - Small production
+   - **Professional ($25/mo)** - Production with auto-scaling
+3. Click **Next**
+
+### Step 4: Configure App
+
+1. Set **HTTP Port** to `8080`
+2. Under **Health Check**, set path to `/healthz`
+3. Add environment variables (optional for basic setup):
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `AIPROXYGUARD_LOG_LEVEL` | `info` | Log verbosity |
+
+4. Click **Next**
+
+### Step 5: Review and Deploy
+
+1. Choose your region (closest to your apps)
+2. Review the configuration
+3. Click **Create Resources**
+4. Wait for deployment (~2 minutes)
+
+### Step 6: Get Your URL
+
+Once deployed, copy your app URL from the dashboard:
+```
+https://aiproxyguard-xxxxx.ondigitalocean.app
 ```
 
-### Step 3: Pull and Run
-
-**From GitHub Container Registry (recommended):**
+**Test it:**
 ```bash
-docker run -d \
-  --name aiproxyguard \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  ghcr.io/ainvirion/aiproxyguard:latest
-```
-
-**From Docker Hub:**
-```bash
-docker run -d \
-  --name aiproxyguard \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  ovalenzuela/aiproxyguard:latest
-```
-
-### Step 4: Verify
-
-```bash
-curl http://localhost:8080/healthz
+curl https://aiproxyguard-xxxxx.ondigitalocean.app/healthz
 # {"status": "healthy"}
 ```
 
-### Step 5: Configure Firewall
-
-Allow traffic on port 8080:
-```bash
-ufw allow 8080/tcp
-```
-
-Your proxy is now accessible at: `http://your-droplet-ip:8080`
-
-### With Docker Compose
-
-Create `docker-compose.yml`:
-
-```yaml
-services:
-  aiproxyguard:
-    image: ghcr.io/ainvirion/aiproxyguard:latest
-    # Alternative: ovalenzuela/aiproxyguard:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      - AIPROXYGUARD_CONTROL_PLANE_ENABLED=true
-      - AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com
-      - AIPROXYGUARD_CONTROL_PLANE_API_KEY=${AIPROXYGUARD_API_KEY}
-```
-
-Run:
-```bash
-docker compose up -d
-```
+For more details, see [DigitalOcean's container image deployment guide](https://docs.digitalocean.com/products/app-platform/how-to/deploy-from-container-images/).
 
 ---
 
 ## Option 2: One-Click Deploy
 
-Deploy to App Platform with one click.
+Deploy directly from the GitHub repository.
 
 [![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/AInvirion/aiproxyguard/tree/main&refcode=)
 
 1. Click the button above
 2. Log in to your DigitalOcean account
-3. Review the default settings (Basic plan, $5/mo works for most use cases)
+3. Review the default settings (Basic plan, $5/mo)
 4. Click **Create Resources**
-5. Wait for deployment to complete (~2 minutes)
+5. Wait for deployment (~2 minutes)
 6. Copy your app URL: `https://aiproxyguard-xxxxx.ondigitalocean.app`
 
 **Test it:**
@@ -116,7 +105,7 @@ curl https://aiproxyguard-xxxxx.ondigitalocean.app/healthz
 
 ---
 
-## Option 3: App Platform CLI
+## Option 3: CLI with doctl
 
 Best for automation, CI/CD pipelines, or repeatable deployments.
 
@@ -158,7 +147,7 @@ services:
       - path: /
 ```
 
-> **Docker Hub alternative:** Use `registry_type: DOCKER_HUB`, `registry: ovalenzuela`
+> **Docker Hub:** Use `registry_type: DOCKER_HUB`, `registry: ovalenzuela`
 
 ### Step 2: Deploy
 
@@ -176,73 +165,15 @@ Note the URL: `https://aiproxyguard-xxxxx.ondigitalocean.app`
 
 ---
 
-## Option 4: App Platform Web UI
-
-Deploy through the DigitalOcean console without any CLI tools.
-
-### Step 1: Create New App
-
-1. Go to [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps)
-2. Click **Create App**
-
-### Step 2: Choose Source
-
-1. Select **Container Registry** as the source
-2. Choose **GHCR (GitHub Container Registry)**
-3. Enter:
-   - **Registry:** `ainvirion`
-   - **Repository:** `aiproxyguard`
-   - **Tag:** `latest`
-4. Click **Next**
-
-> **Docker Hub alternative:** Select **Docker Hub**, registry `ovalenzuela`, repository `aiproxyguard`
-
-### Step 3: Configure Resources
-
-1. Keep the default **Web Service** type
-2. Set **HTTP Port** to `8080`
-3. Under **Health Check**, set path to `/healthz`
-4. Choose your plan:
-   - **Basic ($5/mo)** - Good for development/testing
-   - **Basic ($10/mo)** - Good for small production
-5. Click **Next**
-
-### Step 4: Environment Variables (Optional)
-
-Skip this step for default configuration, or add:
-- `AIPROXYGUARD_LOG_LEVEL`: `info` or `debug`
-
-Click **Next**
-
-### Step 5: Review and Deploy
-
-1. Choose your region (closest to your other apps)
-2. Review the configuration
-3. Click **Create Resources**
-4. Wait for deployment (~2 minutes)
-
-### Step 6: Get Your URL
-
-Once deployed, find your URL in the app dashboard:
-`https://aiproxyguard-xxxxx.ondigitalocean.app`
-
----
-
 ## Test Your Deployment
 
-**For Droplet deployments:**
 ```bash
-curl http://your-droplet-ip:8080/healthz
-```
-
-**For App Platform deployments:**
-```bash
+# Health check
 curl https://aiproxyguard-xxxxx.ondigitalocean.app/healthz
-```
+# {"status": "healthy"}
 
-**Test with OpenAI:**
-```bash
-curl -X POST http://your-proxy-url:8080/openai/v1/chat/completions \
+# Test with OpenAI
+curl -X POST https://aiproxyguard-xxxxx.ondigitalocean.app/openai/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello!"}]}'
@@ -265,21 +196,6 @@ Register your proxy with [aiproxyguard.com](https://aiproxyguard.com) to enable:
 
 ### Step 2: Add Environment Variables
 
-**For Droplet deployments:**
-
-```bash
-docker run -d \
-  --name aiproxyguard \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -e AIPROXYGUARD_CONTROL_PLANE_ENABLED=true \
-  -e AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com \
-  -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-api-key-here \
-  ghcr.io/ainvirion/aiproxyguard:latest
-```
-
-**For App Platform (One-Click or Web UI):**
-
 1. Go to your app in the [DO Console](https://cloud.digitalocean.com/apps)
 2. Click **Settings** → **App-Level Environment Variables**
 3. Add these variables:
@@ -292,9 +208,7 @@ docker run -d \
 
 4. Click **Save** → The app will redeploy automatically
 
-**For App Platform CLI (doctl):**
-
-Add to your `do-app.yaml`:
+**For doctl deployments**, add to your `do-app.yaml`:
 
 ```yaml
 services:
@@ -317,20 +231,13 @@ doctl apps update <app-id> --spec do-app.yaml
 
 ### Step 3: Verify Registration
 
-**Droplet:**
-```bash
-docker logs aiproxyguard | grep "control plane"
-```
-
-**App Platform:**
+Check the logs for successful registration:
 ```bash
 doctl apps logs <app-id> | grep "control plane"
+# {"level": "info", "message": "Connected to control plane", "instance_id": "..."}
 ```
 
-You should see:
-```
-{"level": "info", "message": "Connected to control plane", "instance_id": "..."}
-```
+Or in the DO Console: **Apps** → **aiproxyguard** → **Runtime Logs**
 
 ---
 
@@ -340,7 +247,7 @@ Point your applications to use the proxy:
 
 **Environment variable:**
 ```bash
-OPENAI_BASE_URL=http://your-proxy-url:8080/openai/v1
+OPENAI_BASE_URL=https://aiproxyguard-xxxxx.ondigitalocean.app/openai/v1
 ```
 
 **In code:**
@@ -348,7 +255,7 @@ OPENAI_BASE_URL=http://your-proxy-url:8080/openai/v1
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://your-proxy-url:8080/openai/v1",
+    base_url="https://aiproxyguard-xxxxx.ondigitalocean.app/openai/v1",
     api_key=os.environ["OPENAI_API_KEY"]
 )
 ```
@@ -357,7 +264,7 @@ client = OpenAI(
 
 ## Advanced Configuration
 
-### Internal Network (App Platform)
+### Internal Network
 
 For production, keep the proxy internal and not exposed to the internet.
 
@@ -381,44 +288,26 @@ Other apps in the same region access via internal URL:
 http://proxy.aiproxyguard.internal:8080
 ```
 
-### VPC Network (Droplet)
-
-For Droplet deployments, use DigitalOcean VPC to keep traffic internal:
-
-1. Create both Droplets in the same VPC
-2. Use private IP addresses for communication
-3. Don't expose port 8080 to the public internet
-
 ### Custom Configuration
 
 **Via environment variables:**
-```bash
-docker run -d \
-  --name aiproxyguard \
-  -p 8080:8080 \
-  -e AIPROXYGUARD_CONFIG='server:
-    port: 8080
-  scanner:
-    enabled: true
-  policy:
-    default_action: block' \
-  ghcr.io/ainvirion/aiproxyguard:latest
+
+Add `AIPROXYGUARD_CONFIG` in the app settings:
+
+```yaml
+server:
+  port: 8080
+scanner:
+  enabled: true
+policy:
+  default_action: block
 ```
 
-**Via custom config file:**
-```bash
-docker run -d \
-  --name aiproxyguard \
-  -p 8080:8080 \
-  -v /path/to/config.yaml:/app/config.yaml \
-  ghcr.io/ainvirion/aiproxyguard:latest
-```
+**Via forked repository:**
+
+Fork the repo, customize `config.docker.yaml`, then deploy from your repo using One-Click Deploy.
 
 ### Scaling
-
-**Droplet:** Use a load balancer in front of multiple Droplets.
-
-**App Platform:**
 
 | Traffic Level | Instances | Size | Monthly Cost |
 |---------------|-----------|------|--------------|
@@ -427,6 +316,7 @@ docker run -d \
 | Medium Prod | 2 | basic-s | $24 |
 | Large Prod | 3+ | basic-m | $60+ |
 
+In your app settings or `do-app.yaml`:
 ```yaml
 services:
   - name: proxy
@@ -435,10 +325,6 @@ services:
 ```
 
 ### Custom Domain
-
-**Droplet:** Point your domain's A record to the Droplet IP.
-
-**App Platform:**
 
 1. Add to app spec:
    ```yaml
@@ -452,19 +338,26 @@ services:
    proxy.yourdomain.com → aiproxyguard-xxxxx.ondigitalocean.app
    ```
 
+3. Update the app:
+   ```bash
+   doctl apps update <app-id> --spec do-app.yaml
+   ```
+
 ---
 
 ## Monitoring
 
-**Droplet:**
-```bash
-docker logs -f aiproxyguard
-```
-
-**App Platform:**
+**View logs (CLI):**
 ```bash
 doctl apps logs <app-id> --follow
 ```
+
+**View logs (Console):**
+1. Go to Apps → aiproxyguard → Runtime Logs
+
+**View metrics:**
+1. Go to Apps → aiproxyguard → Insights
+2. View CPU, Memory, Request metrics
 
 **Prometheus integration:**
 
@@ -473,21 +366,28 @@ The proxy exposes `/metrics`. Configure scrape target:
 scrape_configs:
   - job_name: 'aiproxyguard'
     static_configs:
-      - targets: ['your-proxy-ip:8080']
+      - targets: ['proxy.aiproxyguard.internal:8080']
 ```
+
+---
+
+## Alerts
+
+Set up alerts in DO Console:
+
+1. Apps → aiproxyguard → Alerts
+2. Add alerts for:
+   - High error rate (> 5%)
+   - High latency (p95 > 1s)
+   - Instance restarts
 
 ---
 
 ## Troubleshooting
 
-### Container Won't Start
+### App Won't Start
 
-**Droplet:**
-```bash
-docker logs aiproxyguard
-```
-
-**App Platform:**
+Check logs:
 ```bash
 doctl apps logs <app-id>
 ```
@@ -498,14 +398,14 @@ Common issues:
 
 ### Requests Timing Out
 
-- Increase Droplet/instance size
+- Increase `instance_size_slug`
 - Check upstream timeout in config
 - Verify network connectivity to OpenAI/Anthropic
 
 ### High Latency
 
 - Scanner timeout may be too high
-- Consider larger instances
+- Consider `basic-s` or larger instances
 - Check if many requests are being blocked (high scan time)
 
 ---
