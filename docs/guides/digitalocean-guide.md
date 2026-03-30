@@ -8,22 +8,6 @@ nav_order: 1
 
 This guide walks through deploying AIProxyGuard on DigitalOcean App Platform so your DO apps can use it as an LLM security proxy.
 
-## Overview
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                  DigitalOcean                            │
-│                                                          │
-│  ┌──────────────┐     ┌──────────────┐                  │
-│  │   Your App   │────▶│ AIProxyGuard │────▶ OpenAI/etc  │
-│  │  (DO App)    │     │  (DO App)    │                  │
-│  └──────────────┘     └──────────────┘                  │
-│         │                    │                           │
-│         └────────────────────┘                           │
-│            Internal network                              │
-└─────────────────────────────────────────────────────────┘
-```
-
 ## Prerequisites
 
 1. DigitalOcean account
@@ -335,6 +319,6 @@ Common issues:
 
 ## Next Steps
 
-1. [Configure custom detection policies](configuration.md)
-2. [Set up Prometheus monitoring](deployment.md#with-prometheus)
-3. [Enable response scanning](security.md#response-scanning)
+1. [Configure custom detection policies](../configuration)
+2. [Set up Prometheus monitoring](../deployment#with-prometheus)
+3. [Enable response scanning](../security#response-scanning)
