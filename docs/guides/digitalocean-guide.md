@@ -53,23 +53,10 @@ Deploy the pre-built container image from GitHub Container Registry or Docker Hu
 
 1. Set **HTTP Port** to `8080`
 2. Under **Health Check**, set path to `/healthz`
-3. Add environment variables:
+3. Add environment variables (optional):
+   - `AIPROXYGUARD_LOG_LEVEL`: `info` or `debug`
 
-**Basic setup (no fleet management):**
-
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `AIPROXYGUARD_LOG_LEVEL` | `info` | Log verbosity (optional) |
-
-**With fleet management (recommended):**
-
-To get automatic signature updates, fleet management, and analytics, [sign up at aiproxyguard.com](https://aiproxyguard.com) to get your API key, then add:
-
-| Variable | Value |
-|----------|-------|
-| `AIPROXYGUARD_CONTROL_PLANE_ENABLED` | `true` |
-| `AIPROXYGUARD_CONTROL_PLANE_URL` | `https://aiproxyguard.com` |
-| `AIPROXYGUARD_CONTROL_PLANE_API_KEY` | `your-api-key-from-dashboard` |
+**Want fleet management?** Add the control plane environment variables to get automatic signature updates, analytics, and fleet management. See [Connect to Control Plane](#connect-to-control-plane-recommended) for details.
 
 4. Click **Next**
 
@@ -176,6 +163,8 @@ doctl apps list
 ```
 
 Note the URL: `https://aiproxyguard-xxxxx.ondigitalocean.app`
+
+**Want fleet management?** Add the control plane environment variables to your app spec. See [Connect to Control Plane](#connect-to-control-plane-recommended) for the YAML configuration.
 
 ---
 
