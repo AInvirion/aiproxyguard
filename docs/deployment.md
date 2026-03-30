@@ -5,7 +5,7 @@ nav_order: 4
 
 # Deployment
 
-> **DigitalOcean users**: See the dedicated [DigitalOcean Guide](guides/digitalocean-guide.md) for step-by-step App Platform deployment.
+> **DigitalOcean users**: See the dedicated [DigitalOcean Guide](guides/digitalocean-guide) for step-by-step App Platform deployment.
 
 ## Docker
 
@@ -379,7 +379,7 @@ If you see this error in logs:
 
 **Solution:**
 1. Get a new API key from [aiproxyguard.com](https://aiproxyguard.com)
-2. Update your configuration (see [Updating API Keys](configuration.md#updating-or-rotating-api-keys))
+2. Update your configuration (see [Updating API Keys](configuration#updating-or-rotating-api-keys))
 3. Restart the proxy:
 
 ```bash

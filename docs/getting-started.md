@@ -166,6 +166,6 @@ curl -s -X POST http://localhost:8080/openai/v1/chat/completions \
 
 ## Next Steps
 
-- [Configuration](configuration.md) - Customize detection, policies, and upstreams
-- [Deployment](deployment.md) - Production deployment guides
-- [API Reference](api-reference.md) - Full endpoint documentation
+- [Configuration](configuration) - Customize detection, policies, and upstreams
+- [Deployment](deployment) - Production deployment guides
+- [API Reference](api-reference) - Full endpoint documentation
