@@ -11,3 +11,4 @@ Step-by-step guides for deploying AIProxyGuard on various platforms.
 | Platform | Description |
 |----------|-------------|
 | [DigitalOcean](digitalocean-guide) | Deploy on DO App Platform |
+| [AWS Lightsail](aws-lightsail-guide) | Deploy on AWS Lightsail Container Service |
