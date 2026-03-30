@@ -10,10 +10,30 @@ Deploy AIProxyGuard on Google Cloud Run as an LLM security proxy.
 
 | Option | Best For |
 |--------|----------|
-| [1. Cloud Console (Recommended)](#option-1-cloud-console-recommended) | Simple setup, visual interface |
-| [2. gcloud CLI](#option-2-gcloud-cli) | Automation, CI/CD |
+| [1. One-Click Deploy](#option-1-one-click-deploy-easiest) | Quick start |
+| [2. Cloud Console](#option-2-cloud-console) | Visual interface, more control |
+| [3. gcloud CLI](#option-3-gcloud-cli) | Automation, CI/CD |
 
-## Option 1: Cloud Console (Recommended)
+## Option 1: One-Click Deploy (Easiest)
+
+[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run?git_repo=https://github.com/AInvirion/aiproxyguard)
+
+1. Click the button above
+2. Select your Google Cloud project
+3. Choose a region
+4. Click **Deploy**
+5. Wait for deployment (~2-3 minutes)
+
+Once deployed, copy your service URL and test:
+```bash
+curl https://aiproxyguard-xxxxx-uc.a.run.app/healthz
+```
+
+**Want fleet management?** After deployment, add the control plane environment variables. See [Connect to Control Plane](#connect-to-control-plane-recommended) for details.
+
+---
+
+## Option 2: Cloud Console
 
 Deploy using the Google Cloud Console web interface.
 
@@ -79,7 +99,7 @@ curl https://aiproxyguard-xxxxx-uc.a.run.app/healthz
 
 ---
 
-## Option 2: gcloud CLI
+## Option 3: gcloud CLI
 
 Best for automation and CI/CD pipelines.
 
