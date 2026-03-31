@@ -792,17 +792,58 @@ class ControlPlaneClient:
                 else:
                     # Plain bundle (free tier)
                     try:
-                        bundle_response = await self.client.get(
-                            f"/api/v1/signatures/bundles/{bundle_id}"
-                        )
-                        bundle_response.raise_for_status()
-                        bundle_data = bundle_response.json()
-                        content = bundle_data.get("content", "")
-                        logger.info(
-                            f"Fetched plain bundle {bundle_id}: "
-                            f"content_length={len(content)}, "
-                            f"content_preview={content[:100]!r}"
-                        )
+                        # Try to download raw tar.gz to extract model
+                        download_url = bundle_info.get("download_url")
+                        raw_bytes = None
+
+                        if download_url:
+                            async with httpx.AsyncClient(timeout=30.0) as dl_client:
+                                dl_response = await dl_client.get(download_url)
+                                dl_response.raise_for_status()
+                                raw_bytes = dl_response.content
+
+                        if raw_bytes and raw_bytes[:2] == b'\x1f\x8b':
+                            # It's a gzipped tar, extract YAML and model
+                            bundle_content = _extract_bundle_content(raw_bytes)
+                            content = bundle_content.yaml_content
+                            model_data = bundle_content.model_data
+                            model_format = bundle_content.model_format
+                            model_config = bundle_content.model_config
+
+                            logger.info(
+                                f"Fetched plain bundle {bundle_id} (tar.gz): "
+                                f"content_length={len(content)}, "
+                                f"has_model={model_data is not None}"
+                            )
+
+                            # Load embedded ML model if present
+                            if model_data and self._ml_model_callback:
+                                model_config = model_config or {}
+                                logger.info(
+                                    f"Loading ML model from bundle {bundle_id} "
+                                    f"(format={model_format}, size={len(model_data)} bytes)"
+                                )
+                                self._ml_model_callback(model_data, {
+                                    "bundle_id": bundle_id,
+                                    "tier": tier,
+                                    "format": model_format,
+                                    "model_id": model_config.get("model_id"),
+                                    "model_version": model_config.get("model_version"),
+                                })
+                        else:
+                            # Fallback to API endpoint for YAML content only
+                            bundle_response = await self.client.get(
+                                f"/api/v1/signatures/bundles/{bundle_id}"
+                            )
+                            bundle_response.raise_for_status()
+                            bundle_data = bundle_response.json()
+                            content = bundle_data.get("content", "")
+                            logger.info(
+                                f"Fetched plain bundle {bundle_id}: "
+                                f"content_length={len(content)}, "
+                                f"content_preview={content[:100]!r}"
+                            )
+
                         bundle_contents.append({
                             "bundle_id": bundle_id,
                             "version": bundle_info.get("version", ""),
