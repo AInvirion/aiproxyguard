@@ -14,9 +14,36 @@ env:
   IMAGE_NAME_GHCR: ainvirion/aiproxyguard
 
 jobs:
+  # Verify version in pyproject.toml matches tag
+  version-check:
+    name: Verify Version Match
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Check version matches tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            PYPROJECT_VERSION=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+
+            echo "Tag version: $TAG_VERSION"
+            echo "pyproject.toml version: $PYPROJECT_VERSION"
+
+            if [[ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]]; then
+              echo "::error::Version mismatch! Tag is v$TAG_VERSION but pyproject.toml has $PYPROJECT_VERSION"
+              echo "Update pyproject.toml version before tagging."
+              exit 1
+            fi
+
+            echo "✓ Versions match: $TAG_VERSION"
+          fi
+
   # Build each platform in parallel
   build:
     name: Build ${{ matrix.platform }}
+    needs: version-check
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
