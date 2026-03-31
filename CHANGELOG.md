@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.32] - 2026-03-30
+
+### Security
+- **Instance-bound licenses**: Licenses now include `bound_instance_id` to prevent DEK/signature theft
+- **Secure cache modes**: New `cache_mode` config option (`full`, `encrypted_only`, `none`)
+  - `full`: Default, stores encrypted bundle and DEK for offline use
+  - `encrypted_only`: Stores bundle but requires online license refresh for DEK
+  - `none`: In-memory only, no disk caching
+- **License refresh**: Automatic DEK refresh when using `encrypted_only` mode
+
+### Added
+- Instance binding validation in `is_license_valid()`
+- `cache_mode` option in `ControlPlaneConfig`
+- License refresh flow for cached bundles without DEK
+
+## [0.2.31] - 2026-03-30
+
+### Fixed
+- Propagate model metadata through ML model loading chain
+
 ## [0.2.30] - 2026-03-30
 
 ### Fixed
@@ -125,7 +145,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.12...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.32...HEAD
+[0.2.32]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.31...v0.2.32
+[0.2.31]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.30...v0.2.31
+[0.2.30]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.12...v0.2.30
 [0.2.12]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.9...v0.2.10
