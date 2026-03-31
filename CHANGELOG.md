@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.33] - 2026-03-30
+
+### Fixed
+- Correct version reporting in Docker deployments for control plane registration
+
 ## [0.2.32] - 2026-03-30
 
 ### Security
@@ -145,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.32...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.33...HEAD
+[0.2.33]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.32...v0.2.33
 [0.2.32]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.31...v0.2.32
 [0.2.31]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.30...v0.2.31
 [0.2.30]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.12...v0.2.30
