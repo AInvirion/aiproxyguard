@@ -185,7 +185,12 @@ class MLClassifier:
         self._backend = None
         self._try_load_backend()
 
-    def load_from_bytes(self, model_data: bytes, model_format: str | None = None) -> bool:
+    def load_from_bytes(
+        self,
+        model_data: bytes,
+        model_format: str | None = None,
+        config: dict | None = None,
+    ) -> bool:
         """Load model from bytes (e.g., from control plane sync).
 
         SECURITY WARNING: This method uses joblib/pickle to deserialize bytes
@@ -196,6 +201,7 @@ class MLClassifier:
         Args:
             model_data: Raw model bytes. MUST be from a trusted source.
             model_format: Optional format hint ("sklearn", "onnx"). Auto-detected if None.
+            config: Optional model metadata (model_id, model_version, etc.)
 
         Returns:
             True if loading was successful.
@@ -220,17 +226,17 @@ class MLClassifier:
                 model_format = "sklearn"
 
         if model_format == "onnx":
-            return self._load_onnx_from_bytes(model_data)
+            return self._load_onnx_from_bytes(model_data, config)
         else:
             return self._load_sklearn_from_bytes(model_data)
 
-    def _load_onnx_from_bytes(self, model_data: bytes) -> bool:
+    def _load_onnx_from_bytes(self, model_data: bytes, config: dict | None = None) -> bool:
         """Load ONNX model from bytes."""
         try:
             from aiproxyguard.scanner.ml.onnx_backend import ONNXBackend
 
             backend = ONNXBackend()
-            backend.load_from_bytes(model_data)
+            backend.load_from_bytes(model_data, config)
 
             self._backend = backend
             self._available = True

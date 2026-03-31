@@ -65,7 +65,7 @@ async def on_startup(app: web.Application) -> None:
         # Register ML model update callback for tier-based model sync
         def on_ml_model_update(model_data: bytes, license_data: dict) -> None:
             """Hot-reload ML model from control plane."""
-            if scanner.load_ml_from_bytes(model_data):
+            if scanner.load_ml_from_bytes(model_data, model_config=license_data):
                 model_id = license_data.get("model_id", "unknown")
                 tier = license_data.get("tier", "unknown")
                 logger.info(
@@ -639,7 +639,7 @@ async def _run_tls_server(config: Config) -> None:
             # Register ML model update callback for tier-based model sync
             def on_ml_model_update(model_data: bytes, license_data: dict) -> None:
                 """Hot-reload ML model from control plane."""
-                if scanner.load_ml_from_bytes(model_data):
+                if scanner.load_ml_from_bytes(model_data, model_config=license_data):
                     model_id = license_data.get("model_id", "unknown")
                     tier = license_data.get("tier", "unknown")
                     logger.info(

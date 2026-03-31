@@ -158,17 +158,18 @@ class ScannerPipeline:
             path = Path(model_path) if model_path else None
             self._ml_classifier.reload(path)
 
-    def load_ml_from_bytes(self, model_data: bytes) -> bool:
+    def load_ml_from_bytes(self, model_data: bytes, model_config: dict | None = None) -> bool:
         """Load ML model from bytes (e.g., from control plane sync).
 
         Args:
             model_data: Decrypted model bytes from control plane.
+            model_config: Optional model metadata (model_id, model_version, etc.)
 
         Returns:
             True if loading was successful.
         """
         if self._ml_classifier:
-            return self._ml_classifier.load_from_bytes(model_data)
+            return self._ml_classifier.load_from_bytes(model_data, config=model_config)
         return False
 
     def update_scanner_config(self, config: dict) -> None:
