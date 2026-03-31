@@ -798,7 +798,10 @@ class ControlPlaneClient:
 
                         if download_url:
                             async with httpx.AsyncClient(timeout=30.0) as dl_client:
-                                dl_response = await dl_client.get(download_url)
+                                dl_response = await dl_client.get(
+                                    download_url,
+                                    headers={"X-API-Key": self.config.api_key},
+                                )
                                 dl_response.raise_for_status()
                                 raw_bytes = dl_response.content
 
