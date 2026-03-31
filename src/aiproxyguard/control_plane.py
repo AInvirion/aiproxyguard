@@ -177,6 +177,7 @@ class ControlPlaneClient:
         self._telemetry_lock = asyncio.Lock()
         self._registered: bool = False  # Only enable telemetry after successful registration
         self._auth_permanently_failed: bool = False  # Stop retrying on 401/403
+        self._last_policy_id: str | None = None  # Track policy ID to detect policy switches
         self._last_config_version: int = 0
         self._last_signature_version: str = ""
         self._tier: str = "free"  # Updated from heartbeat response
@@ -429,13 +430,24 @@ class ControlPlaneClient:
                 # Re-sync signatures when tier changes (includes ML models from bundles)
                 await self._fetch_and_apply_signatures()
 
-            # Check if config version changed (use != to handle policy switches that reset version)
+            # Check if policy changed (either policy_id or config_version)
+            server_policy_id = data.get("policy_id")
             server_config_version = data.get("config_version", 0)
-            if server_config_version != self._last_config_version:
-                logger.info(
-                    f"Config version changed: {self._last_config_version} -> {server_config_version}"
-                )
+            policy_changed = (
+                server_policy_id != self._last_policy_id
+                or server_config_version != self._last_config_version
+            )
+            if policy_changed:
+                if server_policy_id != self._last_policy_id:
+                    logger.info(
+                        f"Policy switched: {self._last_policy_id} -> {server_policy_id}"
+                    )
+                else:
+                    logger.info(
+                        f"Config version changed: {self._last_config_version} -> {server_config_version}"
+                    )
                 await self._fetch_and_apply_policy()
+                self._last_policy_id = server_policy_id
                 self._last_config_version = server_config_version
 
             # Check if signature version changed
