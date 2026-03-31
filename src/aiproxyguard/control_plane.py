@@ -777,6 +777,7 @@ class ControlPlaneClient:
                         model_data = result.get("model_data")
                         if model_data and self._ml_model_callback:
                             model_format = result.get("model_format", "sklearn-joblib")
+                            model_config = result.get("model_config") or {}
                             logger.info(
                                 f"Loading ML model from bundle {bundle_id} "
                                 f"(format={model_format}, size={len(model_data)} bytes)"
@@ -785,6 +786,8 @@ class ControlPlaneClient:
                                 "bundle_id": bundle_id,
                                 "tier": tier,
                                 "format": model_format,
+                                "model_id": model_config.get("model_id"),
+                                "model_version": model_config.get("model_version"),
                             })
                 else:
                     # Plain bundle (free tier)
@@ -938,10 +941,12 @@ class ControlPlaneClient:
                 yaml_content = bundle_content.yaml_content
                 model_data = bundle_content.model_data
                 model_format = bundle_content.model_format
+                model_config = bundle_content.model_config
             else:
                 yaml_content = decrypted.decode("utf-8")
                 model_data = None
                 model_format = None
+                model_config = None
 
             logger.debug(f"Fetched encrypted bundle {bundle_id}")
 
@@ -956,6 +961,7 @@ class ControlPlaneClient:
                 },
                 "model_data": model_data,
                 "model_format": model_format,
+                "model_config": model_config,
             }
 
         except Exception as e:
@@ -1086,10 +1092,12 @@ class ControlPlaneClient:
                     yaml_content = bundle_content.yaml_content
                     model_data = bundle_content.model_data
                     model_format = bundle_content.model_format
+                    model_config = bundle_content.model_config or {}
                 else:
                     yaml_content = decrypted.decode("utf-8")
                     model_data = None
                     model_format = None
+                    model_config = {}
 
                 tier = license_data.get("tier", "unknown")
                 bundle_contents.append({
@@ -1112,6 +1120,8 @@ class ControlPlaneClient:
                         "bundle_id": bundle_id,
                         "tier": tier,
                         "format": model_format,
+                        "model_id": model_config.get("model_id"),
+                        "model_version": model_config.get("model_version"),
                     })
             except Exception as e:
                 logger.error(f"Failed to decrypt cached bundle {bundle_id}: {e}")
