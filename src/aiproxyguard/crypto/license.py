@@ -89,6 +89,7 @@ class License:
     expires_at: datetime
     signature: str
     download_url: str | None = None
+    bound_instance_id: str | None = None  # Instance this license is bound to
 
 
 @dataclass
@@ -163,6 +164,7 @@ def parse_license(license_data: dict[str, Any]) -> License:
         expires_at=_parse_iso_timestamp(license_data["expires_at"]),
         signature=license_data["signature"],
         download_url=license_data.get("download_url"),
+        bound_instance_id=license_data.get("bound_instance_id"),
     )
 
 
@@ -208,14 +210,18 @@ def verify_license_signature(license_data: dict[str, Any], public_key_b64: str) 
 
 
 def is_license_valid(
-    license: License, public_key_b64: str, license_data: dict[str, Any]
+    license: License,
+    public_key_b64: str,
+    license_data: dict[str, Any],
+    current_instance_id: str | None = None,
 ) -> tuple[bool, str]:
-    """Check if license is valid (signature OK and not expired).
+    """Check if license is valid (signature OK, not expired, instance bound).
 
     Args:
         license: Parsed License object
         public_key_b64: Ed25519 public key for signature verification
         license_data: Original license dict (for signature verification)
+        current_instance_id: Current instance ID for binding validation
 
     Returns:
         (is_valid, reason) tuple
@@ -228,6 +234,17 @@ def is_license_valid(
     now = datetime.now(timezone.utc)
     if now > license.expires_at:
         return False, f"License expired at {license.expires_at.isoformat()}"
+
+    # Check instance binding (if license is bound to a specific instance)
+    if license.bound_instance_id:
+        if not current_instance_id:
+            return False, "License is instance-bound but no instance ID provided"
+        if license.bound_instance_id != current_instance_id:
+            logger.warning(
+                f"License instance mismatch: bound to {license.bound_instance_id[:8]}..., "
+                f"current is {current_instance_id[:8]}..."
+            )
+            return False, "License bound to different instance"
 
     return True, "Valid"
 

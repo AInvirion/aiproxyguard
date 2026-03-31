@@ -138,6 +138,7 @@ class ControlPlaneConfig:
     sync_signatures: bool = True
     report_telemetry: bool = True
     manifest_public_key: str = ""  # Ed25519 public key (base64) for manifest verification
+    cache_mode: str = "full"  # "full", "encrypted_only", "none"
 
 
 @dataclass

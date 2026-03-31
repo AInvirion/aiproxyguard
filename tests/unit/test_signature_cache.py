@@ -76,6 +76,65 @@ class TestSaveBundleCache:
         saved_license = json.loads((bundle_path / "license.json").read_text())
         assert saved_license["license_id"] == "lic_456"
 
+    def test_save_cache_mode_none_skips_caching(self, temp_cache_dir) -> None:
+        """Test that cache_mode='none' doesn't create any files."""
+        license_data = {
+            "license_id": "lic_789",
+            "dek": "base64dekvalue",
+            "expires_at": "2024-04-26T00:00:00Z",
+        }
+
+        result = save_bundle_cache(
+            "no-cache-bundle", b"encrypted", license_data, cache_mode="none"
+        )
+
+        assert result is False
+        bundle_path = temp_cache_dir / "bundles" / "no-cache-bundle"
+        assert not bundle_path.exists()
+
+    def test_save_cache_mode_encrypted_only_removes_dek(self, temp_cache_dir) -> None:
+        """Test that cache_mode='encrypted_only' saves license without DEK."""
+        license_data = {
+            "license_id": "lic_secure",
+            "dek": "supersecretdekvalue",
+            "expires_at": "2024-04-26T00:00:00Z",
+            "account_id": "acc_123",
+        }
+
+        result = save_bundle_cache(
+            "secure-bundle", b"encrypted_content", license_data, cache_mode="encrypted_only"
+        )
+
+        assert result is True
+        bundle_path = temp_cache_dir / "bundles" / "secure-bundle"
+        assert (bundle_path / "bundle.enc").exists()
+
+        saved_license = json.loads((bundle_path / "license.json").read_text())
+        assert "dek" not in saved_license  # DEK should be stripped
+        assert saved_license["license_id"] == "lic_secure"
+        assert saved_license["account_id"] == "acc_123"
+
+        # Verify metadata includes cache_mode
+        metadata = json.loads((bundle_path / "metadata.json").read_text())
+        assert metadata["cache_mode"] == "encrypted_only"
+
+    def test_save_cache_mode_full_preserves_dek(self, temp_cache_dir) -> None:
+        """Test that cache_mode='full' preserves DEK in license."""
+        license_data = {
+            "license_id": "lic_full",
+            "dek": "mydekvalue",
+            "expires_at": "2024-04-26T00:00:00Z",
+        }
+
+        result = save_bundle_cache(
+            "full-bundle", b"encrypted", license_data, cache_mode="full"
+        )
+
+        assert result is True
+        bundle_path = temp_cache_dir / "bundles" / "full-bundle"
+        saved_license = json.loads((bundle_path / "license.json").read_text())
+        assert saved_license["dek"] == "mydekvalue"  # DEK preserved
+
 
 class TestLoadBundleCache:
     """Tests for load_bundle_cache function."""

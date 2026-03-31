@@ -74,6 +74,7 @@ def save_bundle_cache(
     bundle_id: str,
     encrypted_bytes: bytes,
     license_data: dict[str, Any],
+    cache_mode: str = "full",
 ) -> bool:
     """Persist encrypted bundle + license for offline use.
 
@@ -81,10 +82,18 @@ def save_bundle_cache(
         bundle_id: Unique bundle identifier
         encrypted_bytes: Raw encrypted bundle data
         license_data: License dict from API
+        cache_mode: Cache mode - "full" (default), "encrypted_only", or "none"
+            - "full": Cache encrypted bundle + full license (including DEK)
+            - "encrypted_only": Cache encrypted bundle + license WITHOUT DEK
+            - "none": Don't cache anything
 
     Returns:
         True if cache was saved successfully
     """
+    if cache_mode == "none":
+        logger.debug(f"Cache mode is 'none', skipping cache for {bundle_id}")
+        return False
+
     try:
         cache_dir = get_cache_dir()
         bundle_path = cache_dir / "bundles" / bundle_id
@@ -94,9 +103,16 @@ def save_bundle_cache(
         bundle_file = bundle_path / "bundle.enc"
         bundle_file.write_bytes(encrypted_bytes)
 
-        # Save license
+        # Save license (optionally without DEK for security)
+        if cache_mode == "encrypted_only":
+            # Remove DEK from cached license - requires online fetch to decrypt
+            license_to_save = {k: v for k, v in license_data.items() if k != "dek"}
+            logger.debug(f"Caching {bundle_id} without DEK (encrypted_only mode)")
+        else:
+            license_to_save = license_data
+
         license_file = bundle_path / "license.json"
-        license_file.write_text(json.dumps(license_data, indent=2))
+        license_file.write_text(json.dumps(license_to_save, indent=2))
 
         # Save metadata
         metadata = {
@@ -104,11 +120,12 @@ def save_bundle_cache(
             "cached_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": license_data.get("expires_at"),
             "version": license_data.get("bundle_version", license_data.get("version", "")),
+            "cache_mode": cache_mode,
         }
         metadata_file = bundle_path / "metadata.json"
         metadata_file.write_text(json.dumps(metadata, indent=2))
 
-        logger.debug(f"Cached bundle {bundle_id} to {bundle_path}")
+        logger.debug(f"Cached bundle {bundle_id} to {bundle_path} (mode={cache_mode})")
         return True
 
     except Exception as e:

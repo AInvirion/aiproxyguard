@@ -763,8 +763,10 @@ class ControlPlaneClient:
 
                 if is_encrypted:
                     # Fetch encrypted bundle with license
+                    cache_mode = getattr(self.config, "cache_mode", "full")
                     result = await self._fetch_encrypted_bundle(
-                        bundle_id, bundle_info, load_bundle_cache, save_bundle_cache
+                        bundle_id, bundle_info, load_bundle_cache, save_bundle_cache,
+                        cache_mode=cache_mode,
                     )
                     if result:
                         bundle_contents.append(result["content_info"])
@@ -860,6 +862,7 @@ class ControlPlaneClient:
         bundle_info: dict,
         load_cache_fn,
         save_cache_fn,
+        cache_mode: str = "full",
     ) -> dict | None:
         """Fetch an encrypted bundle with license, with cache fallback.
 
@@ -868,6 +871,7 @@ class ControlPlaneClient:
             bundle_info: Bundle metadata from manifest
             load_cache_fn: Function to load from cache
             save_cache_fn: Function to save to cache
+            cache_mode: Cache mode - "full", "encrypted_only", or "none"
 
         Returns:
             Dict with 'content_info' and 'license', or None on failure
@@ -881,16 +885,19 @@ class ControlPlaneClient:
         public_key = getattr(self.config, "manifest_public_key", "")
 
         try:
-            # Request license for this bundle
+            # Request license for this bundle (bound to this instance)
             license_response = await self.client.get(
-                f"/api/v1/signatures/licenses/bundle/{bundle_id}"
+                f"/api/v1/signatures/licenses/bundle/{bundle_id}",
+                params={"instance_id": self.instance_id},
             )
             license_response.raise_for_status()
             license_data = license_response.json()
 
-            # Verify license
+            # Verify license (including instance binding)
             license = parse_license(license_data)
-            valid, reason = is_license_valid(license, public_key, license_data)
+            valid, reason = is_license_valid(
+                license, public_key, license_data, current_instance_id=self.instance_id
+            )
             if not valid:
                 logger.error(f"Invalid license for {bundle_id}: {reason}")
                 return None
@@ -922,8 +929,8 @@ class ControlPlaneClient:
                 "aiproxyguard-encrypted-bundle-v1",
             )
 
-            # Cache for offline use
-            save_cache_fn(bundle_id, encrypted_bytes, license_data)
+            # Cache for offline use (respecting cache_mode)
+            save_cache_fn(bundle_id, encrypted_bytes, license_data, cache_mode)
 
             # Extract YAML and model from bundle
             if decrypted[:2] == b"\x1f\x8b":
@@ -958,8 +965,40 @@ class ControlPlaneClient:
             cached = load_cache_fn(bundle_id)
             if cached:
                 encrypted_bytes, license_data = cached
+
+                # Check if DEK is available (may be missing in encrypted_only mode)
+                if "dek" not in license_data:
+                    # Try to refresh license from server to get fresh DEK
+                    logger.info(
+                        f"Cached bundle {bundle_id} has no DEK, "
+                        f"attempting license refresh..."
+                    )
+                    try:
+                        refresh_response = await self.client.get(
+                            f"/api/v1/signatures/licenses/bundle/{bundle_id}",
+                            params={"instance_id": self.instance_id},
+                        )
+                        refresh_response.raise_for_status()
+                        license_data = refresh_response.json()
+                        logger.info(f"Refreshed license for {bundle_id}")
+                    except Exception as refresh_err:
+                        logger.error(
+                            f"Failed to refresh license for {bundle_id}: {refresh_err}. "
+                            f"Online access required to decrypt."
+                        )
+                        return None
+
                 try:
                     license = parse_license(license_data)
+
+                    # Validate instance binding for cached license
+                    if license.bound_instance_id:
+                        if license.bound_instance_id != self.instance_id:
+                            logger.error(
+                                f"Cached license for {bundle_id} bound to different instance"
+                            )
+                            return None
+
                     decrypted = decrypt_content(
                         encrypted_bytes,
                         license.dek,
@@ -1015,8 +1054,26 @@ class ControlPlaneClient:
                 continue
 
             encrypted_bytes, license_data = cached
+
+            # Check if DEK is available (may be missing in encrypted_only mode)
+            if "dek" not in license_data:
+                logger.warning(
+                    f"Skipping cached bundle {bundle_id}: no DEK (encrypted_only mode)"
+                )
+                continue
+
             try:
                 license = parse_license(license_data)
+
+                # Validate instance binding for cached license
+                if license.bound_instance_id:
+                    if license.bound_instance_id != self.instance_id:
+                        logger.warning(
+                            f"Skipping cached bundle {bundle_id}: "
+                            f"bound to different instance"
+                        )
+                        continue
+
                 decrypted = decrypt_content(
                     encrypted_bytes,
                     license.dek,
