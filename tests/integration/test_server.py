@@ -65,6 +65,15 @@ async def test_metrics_endpoint(client: TestClient) -> None:
     assert "aiproxyguard" in text
 
 
+async def test_root_endpoint(client: TestClient) -> None:
+    """Root endpoint returns service info."""
+    resp = await client.get("/")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["service"] == "AIProxyGuard"
+    assert "version" in data
+
+
 async def test_unknown_provider_returns_404(client: TestClient) -> None:
     """Unknown provider returns 404."""
     resp = await client.get("/unknown/v1/models")

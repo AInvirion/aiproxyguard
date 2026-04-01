@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from aiproxyguard.config import Config
     from aiproxyguard.signatures.models import SignatureSet
 
+from aiproxyguard import __version__
 from aiproxyguard.router import Router
 from aiproxyguard.identity import IdentityResolver
 from aiproxyguard.policy import PolicyEngine
@@ -167,6 +168,14 @@ async def metrics_handler(request: web.Request) -> web.Response:
         content_type=mime_type,
         charset=charset,
     )
+
+
+async def root_handler(request: web.Request) -> web.Response:
+    """Root endpoint returning service info."""
+    return web.json_response({
+        "service": "AIProxyGuard",
+        "version": __version__,
+    })
 
 
 async def proxy_handler(request: web.Request) -> web.Response:
@@ -528,7 +537,6 @@ def create_app(config: Config) -> web.Application:
 
     # Initialize control plane client
     if config.control_plane.enabled:
-        from aiproxyguard import __version__
         init_client(config.control_plane, __version__)
 
     # Lifecycle hooks
@@ -536,6 +544,7 @@ def create_app(config: Config) -> web.Application:
     app.on_cleanup.append(on_cleanup)
 
     # Routes
+    app.router.add_get("/", root_handler)
     app.router.add_get("/healthz", health_handler)
     app.router.add_get("/readyz", readiness_handler)
     # Only expose /metrics if enabled in config
@@ -620,7 +629,6 @@ async def _run_tls_server(config: Config) -> None:
     # Initialize control plane client (same as HTTP path)
     cp_client = None
     if config.control_plane.enabled:
-        from aiproxyguard import __version__
         init_client(config.control_plane, __version__)
         cp_client = get_client()
 
