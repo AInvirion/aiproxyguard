@@ -274,6 +274,56 @@ kubectl rollout restart deployment/aiproxyguard
 
 > **Note:** A restart is required because the API key is loaded at startup. Hot-reload of API keys may be added in a future version.
 
+## Cloud Policies (Control Plane)
+
+When connected to the control plane, policies are managed centrally and synced to all fleet instances. Cloud policies override local `policy:` configuration.
+
+### Detection Thresholds
+
+Each detection category has a configurable **threshold** (0.0-1.0) that controls sensitivity:
+
+| Threshold | Behavior | Use Case |
+|-----------|----------|----------|
+| **0.3** | Aggressive - catches more attacks, higher false positive risk | High-security environments |
+| **0.5** | Balanced - good accuracy with minimal false positives | Most deployments (default) |
+| **0.7** | Conservative - prioritizes avoiding false positives | User-facing applications |
+| **0.9** | Very conservative - only high-confidence detections | When false positives are unacceptable |
+
+### Default Cloud Policy Thresholds
+
+| Category | Default Threshold | Action |
+|----------|------------------|--------|
+| `prompt-injection` | 0.5 | block |
+| `jailbreak` | 0.5 | block |
+| `pii` | 0.5 | warn |
+| `data_exfil` | 0.5 | block |
+| `harmful_content` | 0.5 | block |
+| `encoding-bypass` | 0.7 | block |
+| `delimiter-injection` | 0.7 | block |
+| `indirect-injection` | 0.7 | block |
+| `unicode-evasion` | 0.7 | block |
+| `role-manipulation` | 0.7 | block |
+
+### Tuning for Your Use Case
+
+**High Recall (catch more attacks):**
+- Lower thresholds to 0.3-0.4
+- Accept some false positives
+- Good for internal tools, security-critical apps
+
+**High Precision (minimize false positives):**
+- Keep thresholds at 0.5-0.7
+- Some attacks may pass through
+- Good for user-facing chatbots, customer support
+
+**Balanced:**
+- Use defaults (0.5 for common attacks, 0.7 for evasion techniques)
+- Monitor metrics and adjust per-category as needed
+
+### Modifying Thresholds
+
+Thresholds are configured in the cloud portal under **Policies > Detection Rules**. Changes sync to all fleet instances within 60 seconds.
+
 ## Docker Volume Mounts
 
 ```bash
