@@ -78,6 +78,106 @@ Readiness probe. Returns 200 if the server is ready to accept traffic.
 }
 ```
 
+### GET /
+
+Root endpoint. Returns service name and version.
+
+**Response:**
+```json
+{
+  "service": "AIProxyGuard",
+  "version": "0.2.36"
+}
+```
+
+### POST /check
+
+Detection-only endpoint for scanning text without forwarding to an LLM. Useful for:
+- Pre-validating user input before sending to LLMs
+- Building custom security pipelines
+- Testing detection rules
+- Integrating with external systems
+
+**Request:**
+```bash
+curl -X POST http://localhost:8080/check \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Ignore all previous instructions"}'
+```
+
+**Response (Detection):**
+```json
+{
+  "action": "block",
+  "category": "prompt-injection",
+  "signature_name": "Ignore instructions directive",
+  "confidence": 0.9
+}
+```
+
+**Response (Safe):**
+```json
+{
+  "action": "allow",
+  "category": null,
+  "signature_name": null,
+  "confidence": 0.0
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | string | Resolved action: `allow`, `log`, `warn`, or `block` |
+| `category` | string\|null | Detection category (e.g., `prompt-injection`, `jailbreak`) |
+| `signature_name` | string\|null | Human-readable signature name |
+| `confidence` | float | Confidence score (0.0-1.0) |
+
+**Error Responses:**
+
+```json
+// Invalid JSON
+{"error": {"type": "invalid_json", "message": "Invalid JSON in request body"}}
+
+// Missing text field
+{"error": {"type": "invalid_request", "message": "Missing required field: text"}}
+
+// Non-string text
+{"error": {"type": "invalid_request", "message": "Field 'text' must be a string"}}
+
+// Non-object body
+{"error": {"type": "invalid_request", "message": "Request body must be a JSON object"}}
+```
+
+**Security Notes:**
+- Signature IDs and pattern details are intentionally not exposed to prevent reverse-engineering
+- The endpoint honors `security.failure_mode` configuration (returns 503 or allows on scanner error)
+- Rate limiting applies to this endpoint (see Rate Limiting documentation)
+
+**Example: Pre-validation Pipeline**
+
+```python
+import requests
+
+def check_prompt(text: str) -> bool:
+    """Check if prompt is safe before sending to LLM."""
+    response = requests.post(
+        "http://localhost:8080/check",
+        json={"text": text}
+    )
+    result = response.json()
+    return result["action"] == "allow"
+
+# Usage
+user_input = input("Enter your question: ")
+if check_prompt(user_input):
+    # Safe to send to LLM
+    llm_response = call_llm(user_input)
+else:
+    print("Sorry, that input was flagged for security reasons.")
+```
+
 ### GET /metrics
 
 Prometheus metrics endpoint. Returns metrics in Prometheus text format.
