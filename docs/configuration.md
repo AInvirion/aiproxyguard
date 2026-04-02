@@ -147,6 +147,47 @@ control_plane:
 | `warn` | Scan and log detections with warning, allow request |
 | `block` | Scan and block if detection confidence >= threshold |
 
+## Threshold vs Sensitivity
+
+You can configure detection strictness using either `threshold` or `sensitivity`:
+
+### Threshold (Technical)
+
+The `threshold` parameter sets the minimum confidence score required to trigger an action. Lower threshold = more strict (catches more).
+
+```yaml
+policy:
+  categories:
+    prompt-injection:
+      action: "block"
+      threshold: 0.8  # Only block if confidence >= 80%
+```
+
+### Sensitivity (Intuitive)
+
+The `sensitivity` parameter is an intuitive alternative where higher values = more strict. Internally converted to threshold via `threshold = 1 - sensitivity`.
+
+```yaml
+policy:
+  categories:
+    prompt-injection:
+      action: "block"
+      sensitivity: 0.9  # High sensitivity = catch more attacks (threshold = 0.1)
+```
+
+| Sensitivity | Threshold | Behavior |
+|-------------|-----------|----------|
+| 1.0 | 0.0 | Block everything detected (most strict) |
+| 0.9 | 0.1 | Very aggressive - catch almost everything |
+| 0.7 | 0.3 | Aggressive - good for high-security |
+| 0.5 | 0.5 | Balanced (default) |
+| 0.3 | 0.7 | Conservative - fewer false positives |
+| 0.0 | 1.0 | Only 100% confidence detections (least strict) |
+
+**When both are provided**, `sensitivity` takes precedence.
+
+**Cloud Policy Sync:** When connected to the control plane, you can configure sensitivity per-category in the cloud portal under **Policies > Detection Rules**. Changes sync to all fleet instances.
+
 ## Failure Modes
 
 | Mode | Behavior |
@@ -323,6 +364,106 @@ Each detection category has a configurable **threshold** (0.0-1.0) that controls
 ### Modifying Thresholds
 
 Thresholds are configured in the cloud portal under **Policies > Detection Rules**. Changes sync to all fleet instances within 60 seconds.
+
+## Rate Limiting (DDoS Protection)
+
+AIProxyGuard includes an iptables-based rate limiting script for DDoS protection. This runs at the host level and protects the proxy from excessive requests.
+
+### Enabling Rate Limiting
+
+The rate limiting script is located at `deploy/rate-limit.sh`. It uses Linux iptables with the hashlimit module for per-IP rate limiting.
+
+**Requirements:**
+- Linux host with iptables
+- Root/sudo access
+- Docker (uses DOCKER-USER chain for compatibility)
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RATE_LIMIT_ENABLED` | `false` | Enable rate limiting |
+| `RATE_LIMIT_PORT` | `8080` | Port to protect |
+| `RATE_LIMIT_RATE` | `100/minute` | Requests per interval (e.g., `100/minute`, `10/second`) |
+| `RATE_LIMIT_BURST` | `50` | Burst allowance before limiting kicks in |
+| `RATE_LIMIT_CONN` | `100` | Max concurrent connections per IP |
+| `RATE_LIMIT_WHITELIST` | `` | Comma-separated IPs to exclude (e.g., `10.0.0.1,192.168.1.0/24`) |
+| `RATE_LIMIT_BLOCKLIST` | `` | Comma-separated IPs to always block |
+
+### Usage
+
+**Option 1: Run directly on host**
+
+```bash
+# Enable rate limiting
+sudo RATE_LIMIT_ENABLED=true \
+     RATE_LIMIT_PORT=8080 \
+     RATE_LIMIT_RATE=100/minute \
+     RATE_LIMIT_BURST=50 \
+     ./deploy/rate-limit.sh
+
+# Disable rate limiting
+sudo RATE_LIMIT_ENABLED=false ./deploy/rate-limit.sh
+```
+
+**Option 2: Docker entrypoint (privileged mode)**
+
+```bash
+docker run -d --name aiproxyguard \
+  --privileged \
+  --cap-add=NET_ADMIN \
+  -p 8080:8080 \
+  -e RATE_LIMIT_ENABLED=true \
+  -e RATE_LIMIT_RATE=100/minute \
+  -e RATE_LIMIT_BURST=50 \
+  -e RATE_LIMIT_WHITELIST=10.0.0.0/8 \
+  ovalenzuela/aiproxyguard:latest
+```
+
+**Option 3: Systemd service**
+
+```ini
+# /etc/systemd/system/aiproxyguard-ratelimit.service
+[Unit]
+Description=AIProxyGuard Rate Limiting
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment="RATE_LIMIT_ENABLED=true"
+Environment="RATE_LIMIT_PORT=8080"
+Environment="RATE_LIMIT_RATE=100/minute"
+ExecStart=/opt/aiproxyguard/deploy/rate-limit.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Rate Limit Tuning
+
+| Use Case | Rate | Burst | Conn |
+|----------|------|-------|------|
+| Public API | `30/minute` | `10` | `20` |
+| Internal service | `500/minute` | `100` | `200` |
+| High-traffic app | `1000/minute` | `200` | `500` |
+| Development | `100/minute` | `50` | `100` |
+
+### Viewing Active Rules
+
+```bash
+# List all rules in DOCKER-USER chain
+sudo iptables -L DOCKER-USER -n -v
+
+# List hashlimit stats
+cat /proc/net/ipt_hashlimit/aiproxyguard_*
+```
+
+### Clearing Rules
+
+```bash
+sudo RATE_LIMIT_ENABLED=false ./deploy/rate-limit.sh
+```
 
 ## Docker Volume Mounts
 
