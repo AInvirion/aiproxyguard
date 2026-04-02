@@ -25,9 +25,9 @@ from aiohttp import web
 
 if TYPE_CHECKING:
     from aiproxyguard.config import Config
-    from aiproxyguard.signatures.models import SignatureSet
 
 from aiproxyguard import __version__
+from aiproxyguard.signatures.models import SignatureSet
 from aiproxyguard.router import Router
 from aiproxyguard.identity import IdentityResolver
 from aiproxyguard.policy import PolicyEngine
@@ -176,6 +176,100 @@ async def root_handler(request: web.Request) -> web.Response:
         "service": "AIProxyGuard",
         "version": __version__,
     })
+
+
+async def check_handler(request: web.Request) -> web.Response:
+    """Detection-only endpoint - runs scanner without forwarding to LLM."""
+    app = request.app
+    config: Config = app["config"]
+    scanner: ScannerPipeline = app["scanner"]
+    signatures: SignatureSet = app["signatures"]
+    metrics: MetricsCollector = app["metrics"]
+
+    # Parse request body
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response(
+            {"error": {"type": "invalid_json", "message": "Request body must be valid JSON"}},
+            status=400,
+        )
+
+    # Validate body is a dict (not array, string, number, etc.)
+    if not isinstance(body, dict):
+        return web.json_response(
+            {"error": {"type": "invalid_request", "message": "Request body must be a JSON object"}},
+            status=400,
+        )
+
+    text = body.get("text")
+    if not text or not isinstance(text, str):
+        return web.json_response(
+            {"error": {"type": "invalid_request", "message": "Request must include 'text' field"}},
+            status=400,
+        )
+
+    # Run scanner with timeout
+    scan_start = time.monotonic()
+    try:
+        timeout_s = config.security.scanner_timeout_ms / 1000.0
+        scan_result = await asyncio.wait_for(
+            scanner.scan_async(text),
+            timeout=timeout_s,
+        )
+        scan_duration = time.monotonic() - scan_start
+        metrics.record_scan("check", scan_result.action, scan_duration)
+
+        # Look up signature name if we have a signature_id
+        signature_name = None
+        if scan_result.signature_id:
+            sig = signatures.get(scan_result.signature_id)
+            if sig:
+                signature_name = sig.name
+
+        # Don't expose signature_id or details to prevent reverse engineering
+        return web.json_response({
+            "action": scan_result.action,
+            "category": scan_result.category,
+            "signature_name": signature_name,
+            "confidence": scan_result.confidence,
+        })
+
+    except asyncio.TimeoutError:
+        scan_duration = time.monotonic() - scan_start
+        metrics.record_scan("check", "timeout", scan_duration)
+        logger.warning(
+            "Check endpoint scanner timeout",
+            extra={"timeout_ms": config.security.scanner_timeout_ms},
+        )
+        # Honor failure_mode: closed = fail safe (503), open = allow
+        if config.security.failure_mode == "closed":
+            return web.json_response(
+                {"error": {"type": "scanner_timeout", "message": "Scanner timed out"}},
+                status=503,
+            )
+        # Fail open - return allow
+        return web.json_response({
+            "action": "allow",
+            "category": None,
+            "signature_name": None,
+            "confidence": 0.0,
+        })
+    except Exception as e:
+        logger.error(f"Check endpoint error: {e}")
+        # Honor failure_mode: closed = fail safe (503), open = allow
+        if config.security.failure_mode == "closed":
+            return web.json_response(
+                {"error": {"type": "scanner_error", "message": "Scanner error"}},
+                status=503,
+            )
+        # Fail open - return allow
+        return web.json_response({
+            "action": "allow",
+            "category": None,
+            "signature_name": None,
+            "confidence": 0.0,
+        })
 
 
 async def proxy_handler(request: web.Request) -> web.Response:
@@ -547,6 +641,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_get("/", root_handler)
     app.router.add_get("/healthz", health_handler)
     app.router.add_get("/readyz", readiness_handler)
+    app.router.add_post("/check", check_handler)
     # Only expose /metrics if enabled in config
     if config.metrics.enabled:
         app.router.add_get("/metrics", metrics_handler)
