@@ -1,0 +1,36 @@
+# AIProxyGuard Rate Limiting systemd service
+#
+# This service applies iptables rate limiting rules after Docker starts.
+# It ensures rules persist across Docker restarts.
+#
+# Installation:
+#   1. Copy rate-limit.sh to /etc/aiproxyguard/
+#   2. Copy this file to /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable aiproxyguard-ratelimit
+#   5. sudo systemctl start aiproxyguard-ratelimit
+#
+# Configuration:
+#   Edit /etc/aiproxyguard/rate-limit.conf to change defaults
+
+[Unit]
+Description=AIProxyGuard Rate Limiting Rules
+Documentation=https://github.com/AInvirion/aiproxyguard
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Load configuration if exists
+EnvironmentFile=-/etc/aiproxyguard/rate-limit.conf
+
+# Apply rules
+ExecStart=/etc/aiproxyguard/rate-limit.sh
+
+# Remove rules on stop
+ExecStop=/etc/aiproxyguard/rate-limit.sh --remove
+
+[Install]
+WantedBy=multi-user.target
