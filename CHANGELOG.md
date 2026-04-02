@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.38] - 2026-04-02
+
+### Changed
+- **Signatures updated to v1.4.3** - Latest detection rules from aiproxyguard-signatures
+- Documentation for `/check` endpoint, rate limiting, and sensitivity parameter
+- Updated README with detection-only mode example
+
+## [0.2.37] - 2026-04-02
+
+### Added
+- **`POST /check` endpoint** - Detection-only scanning without LLM forwarding
+  - Returns `{action, category, signature_name, confidence}`
+  - Honors `failure_mode` configuration
+  - Validates JSON body structure
+- **Sensitivity parameter** - Intuitive alternative to threshold (`sensitivity = 1 - threshold`)
+  - Higher sensitivity = more strict detection
+  - Takes precedence when both threshold and sensitivity are provided
+  - Values clamped to [0.0, 1.0] range
+- **Rate limiting** - iptables-based DDoS protection (`deploy/rate-limit.sh`)
+  - Per-IP rate limiting with hashlimit module
+  - Environment variables: `RATE_LIMIT_ENABLED`, `RATE_LIMIT_PORT`, `RATE_LIMIT_RATE`, `RATE_LIMIT_BURST`, `RATE_LIMIT_CONN`, `RATE_LIMIT_WHITELIST`, `RATE_LIMIT_BLOCKLIST`
+  - Uses DOCKER-USER chain for Docker compatibility
+- **Encoding evasion detection improvements**
+  - Zero-width character detection and stripping
+  - Hex escape sequence decoding (`\x69` → `i`)
+  - ROT13 detection (with noise tolerance)
+  - Character insertion detection (emoji, punctuation)
+- Root endpoint (`GET /`) returning service name and version
+
+### Fixed
+- `/check` endpoint now returns 400 for non-object JSON bodies (arrays, strings)
+
+## [0.2.36] - 2026-03-31
+
+### Added
+- Root endpoint returning service name and version
+
+## [0.2.35] - 2026-03-31
+
+### Fixed
+- Pass API key header when downloading free tier bundles
+
+## [0.2.34] - 2026-03-31
+
+### Added
+- Version check in docker-publish workflow
+
 ## [0.2.33] - 2026-03-30
 
 ### Fixed
@@ -150,7 +197,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.33...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.38...HEAD
+[0.2.38]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.37...v0.2.38
+[0.2.37]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.36...v0.2.37
+[0.2.36]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.35...v0.2.36
+[0.2.35]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.34...v0.2.35
+[0.2.34]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.33...v0.2.34
 [0.2.33]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.32...v0.2.33
 [0.2.32]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.31...v0.2.32
 [0.2.31]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.30...v0.2.31
