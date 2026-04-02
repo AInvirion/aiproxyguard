@@ -85,3 +85,67 @@ def has_url_encoding(text: str) -> bool:
         return decoded != text
     except Exception:
         return False
+
+
+# Zero-width characters that can be used to split words
+ZERO_WIDTH_CHARS = frozenset([
+    '\u200b',  # Zero Width Space
+    '\u200c',  # Zero Width Non-Joiner
+    '\u200d',  # Zero Width Joiner
+    '\u2060',  # Word Joiner
+    '\ufeff',  # Zero Width No-Break Space (BOM)
+    '\u180e',  # Mongolian Vowel Separator
+])
+
+
+def has_zero_width_chars(text: str) -> int:
+    """Count zero-width characters in text."""
+    return sum(1 for c in text if c in ZERO_WIDTH_CHARS)
+
+
+def strip_zero_width(text: str) -> str:
+    """Remove zero-width characters from text."""
+    return ''.join(c for c in text if c not in ZERO_WIDTH_CHARS)
+
+
+# Pre-compiled pattern for hex escapes like \x69\x67\x6e
+_HEX_ESCAPE_PATTERN = re.compile(r'\\x([0-9a-fA-F]{2})')
+
+
+def has_hex_escapes(text: str) -> bool:
+    """Check if text contains hex escape sequences."""
+    return bool(_HEX_ESCAPE_PATTERN.search(text))
+
+
+def decode_hex_escapes(text: str) -> str:
+    """Decode hex escape sequences like \\x69 -> 'i'."""
+    def replace_hex(match: re.Match) -> str:
+        try:
+            return chr(int(match.group(1), 16))
+        except (ValueError, OverflowError):
+            return match.group(0)
+    return _HEX_ESCAPE_PATTERN.sub(replace_hex, text)
+
+
+def decode_rot13(text: str) -> str:
+    """Decode ROT13 encoded text."""
+    result = []
+    for c in text:
+        if 'a' <= c <= 'z':
+            result.append(chr((ord(c) - ord('a') + 13) % 26 + ord('a')))
+        elif 'A' <= c <= 'Z':
+            result.append(chr((ord(c) - ord('A') + 13) % 26 + ord('A')))
+        else:
+            result.append(c)
+    return ''.join(result)
+
+
+def strip_non_letters(text: str) -> str:
+    """Strip all non-letter characters to detect hidden words.
+
+    This catches evasion techniques like:
+    - I.G.N.O.R.E -> IGNORE
+    - i🚨g🚨n🚨o🚨r🚨e -> ignore
+    - i-g-n-o-r-e -> ignore
+    """
+    return ''.join(c for c in text if c.isalpha())
