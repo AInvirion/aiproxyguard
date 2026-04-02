@@ -82,7 +82,7 @@ class PolicyEngine:
 
         # Get category config
         cat_config = self.categories.get(category, {})
-        threshold = cat_config.get("threshold", 0.0)
+        threshold = self._get_threshold(cat_config)
         action = cat_config.get("action", self.default_action)
 
         # Check threshold
@@ -90,6 +90,24 @@ class PolicyEngine:
             return "allow"
 
         return action
+
+    def _get_threshold(self, cat_config: dict[str, Any]) -> float:
+        """Get threshold from category config, supporting both threshold and sensitivity.
+
+        If 'sensitivity' is provided, threshold = 1 - sensitivity.
+        If both are provided, 'sensitivity' takes precedence.
+        If neither is provided, returns 0.0 (allow all detections).
+
+        Args:
+            cat_config: Category configuration dict
+
+        Returns:
+            Threshold value (0.0 to 1.0)
+        """
+        if "sensitivity" in cat_config:
+            sensitivity = cat_config["sensitivity"]
+            return max(0.0, min(1.0, 1.0 - sensitivity))
+        return cat_config.get("threshold", 0.0)
 
     def is_allowlisted(self, client_id: str, category: str) -> bool:
         """Check if client is allowlisted for a category."""
