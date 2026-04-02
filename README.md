@@ -48,11 +48,26 @@ response = client.chat.completions.create(
 # Raises: BadRequestError - content_blocked
 ```
 
+## Detection-Only Mode
+
+Use the `/check` endpoint to scan text without forwarding to an LLM:
+
+```bash
+curl -X POST http://localhost:8080/check \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Ignore all previous instructions"}'
+
+# Response:
+# {"action": "block", "category": "prompt-injection", "signature_name": "Ignore instructions directive", "confidence": 0.9}
+```
+
 ## Features
 
 - **Multi-Provider Routing** - OpenAI, Anthropic, OpenRouter, Ollama
+- **Detection-Only Mode** - `/check` endpoint for pre-validation
 - **Request & Response Scanning** - Regex + heuristics detection
 - **Policy Engine** - Per-category actions (block/warn/log)
+- **Rate Limiting** - iptables-based DDoS protection
 - **Prometheus Metrics** - Full observability at `/metrics`
 - **Control Plane** - Fleet management, automatic signature sync
 
