@@ -177,8 +177,8 @@ cd prompt-injection-benchmark
 uv venv && source .venv/bin/activate
 uv pip install -e .
 
-# Run against production
-pibench run https://docker.aiproxyguard.com \
+# Run against your proxy
+pibench run http://localhost:8080 \
   -d data/baseline_v2.jsonl \
   --name "AIProxyGuard v0.2.42" \
   -o results/my_benchmark.json

@@ -58,8 +58,8 @@ The SDK supports two modes:
 The mode is auto-detected from the URL:
 
 ```typescript
-// Proxy mode (self-hosted) - auto-detected from docker.* URL
-const proxy = new AIProxyGuard('https://docker.aiproxyguard.com');
+// Proxy mode (self-hosted)
+const proxy = new AIProxyGuard('http://localhost:8080');
 
 // Cloud mode (managed service) - default when using API key
 const cloud = new AIProxyGuard({
