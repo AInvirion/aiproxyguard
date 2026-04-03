@@ -61,3 +61,4 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 - [DigitalOcean Guide](guides/digitalocean-guide) - Step-by-step DO App Platform deployment
 - [API Reference](api-reference) - Endpoints and response formats
 - [Security](security) - Threat detection and reporting
+- [Benchmarks](benchmarks) - Detection accuracy and performance metrics
