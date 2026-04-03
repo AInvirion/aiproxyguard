@@ -51,23 +51,16 @@ The SDK supports two modes:
 | **Proxy** | `http://localhost:8080` | Self-hosted, lower latency |
 | **Cloud** | `https://aiproxyguard.com` | Managed service, no infrastructure |
 
-The mode is auto-detected from the URL, or you can set it explicitly:
+The mode is auto-detected from the URL:
 
 ```python
-# Auto-detect: proxy mode (localhost)
+# Proxy mode (self-hosted)
 client = AIProxyGuard("http://localhost:8080")
 
-# Auto-detect: cloud mode (aiproxyguard.com)
+# Cloud mode (managed service)
 client = AIProxyGuard(
     "https://aiproxyguard.com",
     api_key="apg_your_api_key_here"
-)
-
-# Explicit mode
-client = AIProxyGuard(
-    "https://custom-endpoint.example.com",
-    api_key="apg_xxx",
-    api_mode="cloud"
 )
 ```
 
