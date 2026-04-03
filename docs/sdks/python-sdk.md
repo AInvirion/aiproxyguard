@@ -1,6 +1,7 @@
 ---
 title: Python SDK
-nav_order: 6
+parent: SDKs
+nav_order: 1
 ---
 
 # Python SDK

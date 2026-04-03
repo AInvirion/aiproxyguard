@@ -1,7 +1,7 @@
 ---
 title: Railway
-parent: Guides
-nav_order: 5
+parent: Proxy Deployment
+nav_order: 6
 ---
 
 # Railway Deployment Guide

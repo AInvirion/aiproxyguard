@@ -1,7 +1,7 @@
 ---
 title: AWS Lightsail
-parent: Guides
-nav_order: 2
+parent: Proxy Deployment
+nav_order: 3
 ---
 
 # AWS Lightsail Deployment Guide

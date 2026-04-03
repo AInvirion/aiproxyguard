@@ -1,7 +1,7 @@
 ---
 title: Azure Container Apps
-parent: Guides
-nav_order: 3
+parent: Proxy Deployment
+nav_order: 4
 ---
 
 # Azure Container Apps Deployment Guide

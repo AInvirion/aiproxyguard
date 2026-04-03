@@ -5,6 +5,8 @@ nav_order: 2
 
 # Getting Started
 
+> **Prefer not to self-host?** Skip proxy deployment entirely - use the [Cloud API](https://aiproxyguard.com) with our [SDKs](sdks/) for instant protection.
+
 ## Installation
 
 ### Docker (Recommended)
@@ -23,6 +25,8 @@ docker run -d -p 8080:8080 \
 ```
 
 > **Alternative:** Also available on Docker Hub as `ovalenzuela/aiproxyguard`
+
+> **Note:** The Docker image includes basic detection rules out of the box. For continuously updated signatures and advanced threat detection, connect to the [Cloud control plane](https://aiproxyguard.com) or use the Cloud API directly.
 
 The default config enables:
 - OpenAI and Anthropic upstreams
@@ -166,7 +170,7 @@ curl -s -X POST http://localhost:8080/openai/v1/chat/completions \
 
 ## Next Steps
 
-- [Python SDK](python-sdk) - Official Python client for direct integration
+- [SDKs](sdks/) - Python and JavaScript clients for direct integration
 - [Configuration](configuration) - Customize detection, policies, and upstreams
-- [Deployment](deployment) - Production deployment guides
+- [Proxy Deployment](proxy-deployment/) - Production deployment guides
 - [API Reference](api-reference) - Full endpoint documentation

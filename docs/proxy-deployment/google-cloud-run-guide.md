@@ -1,7 +1,7 @@
 ---
 title: Google Cloud Run
-parent: Guides
-nav_order: 4
+parent: Proxy Deployment
+nav_order: 5
 ---
 
 # Google Cloud Run Deployment Guide

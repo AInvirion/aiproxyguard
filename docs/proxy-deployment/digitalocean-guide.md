@@ -1,7 +1,7 @@
 ---
 title: DigitalOcean
-parent: Guides
-nav_order: 1
+parent: Proxy Deployment
+nav_order: 2
 ---
 
 # DigitalOcean Deployment Guide

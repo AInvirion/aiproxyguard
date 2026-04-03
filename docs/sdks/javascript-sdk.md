@@ -1,6 +1,7 @@
 ---
 title: JavaScript SDK
-nav_order: 7
+parent: SDKs
+nav_order: 2
 ---
 
 # JavaScript SDK
