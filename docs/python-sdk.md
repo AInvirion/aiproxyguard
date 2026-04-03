@@ -48,13 +48,13 @@ The SDK supports two modes:
 
 | Mode | URL | Use Case |
 |------|-----|----------|
-| **Proxy** | `http://localhost:8080` or `docker.aiproxyguard.com` | Self-hosted, lower latency |
+| **Proxy** | `http://localhost:8080` | Self-hosted, lower latency |
 | **Cloud** | `https://aiproxyguard.com` | Managed service, no infrastructure |
 
 The mode is auto-detected from the URL, or you can set it explicitly:
 
 ```python
-# Auto-detect: proxy mode (localhost or docker.aiproxyguard.com)
+# Auto-detect: proxy mode (localhost)
 client = AIProxyGuard("http://localhost:8080")
 
 # Auto-detect: cloud mode (aiproxyguard.com)
