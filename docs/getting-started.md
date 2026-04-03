@@ -166,6 +166,7 @@ curl -s -X POST http://localhost:8080/openai/v1/chat/completions \
 
 ## Next Steps
 
+- [Python SDK](python-sdk) - Official Python client for direct integration
 - [Configuration](configuration) - Customize detection, policies, and upstreams
 - [Deployment](deployment) - Production deployment guides
 - [API Reference](api-reference) - Full endpoint documentation

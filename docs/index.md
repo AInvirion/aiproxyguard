@@ -55,6 +55,7 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 ## Next Steps
 
 - [Getting Started](getting-started) - Installation and basic setup
+- [Python SDK](python-sdk) - Official Python client library
 - [Configuration](configuration) - Full config reference
 - [Deployment](deployment) - Docker, Docker Compose, production guides
 - [DigitalOcean Guide](guides/digitalocean-guide) - Step-by-step DO App Platform deployment
