@@ -4,8 +4,11 @@ FROM python:3.11-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
+# Include regex engine libs: hyperscan (x86_64) or re2 (ARM64)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    && (apt-get install -y --no-install-recommends libhyperscan-dev || true) \
+    && (apt-get install -y --no-install-recommends libre2-dev || true) \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only dependency files first (better caching)
@@ -31,10 +34,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install CA certificates and locales for ONNX runtime
+# Install CA certificates, locales, and regex engine runtime libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     locales \
+    && (apt-get install -y --no-install-recommends libhyperscan5 || true) \
+    && (apt-get install -y --no-install-recommends libre2-9 || true) \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
