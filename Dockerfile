@@ -34,20 +34,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install CA certificates and locales
+# Install CA certificates, locales, and regex engine runtime libs
+# Use apt-cache to find available package versions dynamically
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     locales \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen \
+    && (apt-get install -y --no-install-recommends libhyperscan5 2>/dev/null || true) \
+    && (apt-get install -y --no-install-recommends $(apt-cache search --names-only '^libre2-[0-9]+$' | head -1 | cut -d' ' -f1) 2>/dev/null || true) \
     && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
-
-# Copy regex engine shared libs from builder (avoids version-specific package names)
-COPY --from=builder /usr/lib/*/libre2*.so* /usr/lib/
-COPY --from=builder /usr/lib/*/libhs*.so* /usr/lib/
 
 # Copy installed packages
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

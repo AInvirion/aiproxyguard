@@ -36,12 +36,17 @@ try:
     import hyperscan
 
     # Verify hyperscan is actually functional (not just stub bindings)
-    # The Scanner class only exists when the native library is properly linked
-    if hasattr(hyperscan, "Scanner") and hasattr(hyperscan, "Database"):
-        _REGEX_ENGINE = "hyperscan"
-        logger.info("Using Hyperscan for high-performance regex matching")
+    # Database class must exist and have compile/scan methods
+    if hasattr(hyperscan, "Database"):
+        _test_db = hyperscan.Database()
+        if hasattr(_test_db, "compile") and hasattr(_test_db, "scan"):
+            _REGEX_ENGINE = "hyperscan"
+            logger.info("Using Hyperscan for high-performance regex matching")
+        else:
+            raise ImportError("Hyperscan Database missing compile/scan methods")
+        del _test_db
     else:
-        raise ImportError("Hyperscan bindings incomplete - missing Scanner/Database")
+        raise ImportError("Hyperscan bindings incomplete - missing Database")
 except ImportError:
     try:
         import re2
@@ -168,8 +173,8 @@ class HyperscanScanner(BaseRegexScanner):
                 )
 
         try:
-            scanner = hyperscan.Scanner()
-            scanner.scan(self._db, text_bytes, match_handler=on_match, context=matches)
+            # Use Database.scan() directly (hyperscan-python >= 0.7)
+            self._db.scan(text_bytes, on_match, context=matches)
         except hyperscan.error as e:
             logger.error(f"Hyperscan scan error: {e}")
 
