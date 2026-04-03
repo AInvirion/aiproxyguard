@@ -30,10 +30,9 @@ AIProxyGuard detection accuracy is measured using [PIBench](https://github.com/A
 
 We use a canonical baseline dataset for reproducible comparisons:
 
-| Dataset | Version | Samples | Jailbreaks | Injections | Benign |
-|---------|---------|---------|------------|------------|--------|
-| baseline_v2 | Current | 1,834 | 441 | 470 | 917 |
-| baseline_v1 | Legacy | 1,016 | 97 | 411 | 508 |
+| Dataset | Samples | Jailbreaks | Injections | Benign |
+|---------|---------|------------|------------|--------|
+| baseline_v2.jsonl | 1,834 | 441 | 470 | 917 |
 
 ### Data Sources
 
