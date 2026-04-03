@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation for `/check` endpoint, rate limiting, and sensitivity parameter
 - Updated README with detection-only mode example
 
+### Fixed
+- **Docker image missing regex engine libs** - Added `libhyperscan-dev`/`libre2-dev` (build) and `libhyperscan5`/`libre2-9` (runtime) to Dockerfile. Without these, Python fell back to stdlib `re` causing 100% CPU and scanner timeouts.
+
 ## [0.2.37] - 2026-04-02
 
 ### Added
