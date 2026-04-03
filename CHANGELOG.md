@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.42] - 2026-04-03
+
+### Fixed
+- **Hyperscan large pattern support** - Removed `SOM_LEFTMOST` flag to allow patterns with large quantifiers (`.{0,50}` etc). Trade-off: match start position is estimated (100 chars before end) instead of exact. Full detection accuracy preserved.
+
 ## [0.2.41] - 2026-04-03
 
 ### Fixed
