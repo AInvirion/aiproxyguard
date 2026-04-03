@@ -18,6 +18,14 @@ pip install aiproxyguard-python-sdk
 
 ## Quick Start
 
+First, start the proxy locally ([full setup guide](https://ainvirion.github.io/aiproxyguard/#quick-start)):
+
+```bash
+docker run -d -p 8080:8080 ghcr.io/ainvirion/aiproxyguard:latest
+```
+
+Then connect the SDK:
+
 ```python
 from aiproxyguard import AIProxyGuard
 
@@ -394,7 +402,7 @@ client = AIProxyGuard(
 )
 
 # Protect your LLM function
-@guard(client)
+@guard(client, input_arg="user_input")
 async def chat(user_input: str) -> str:
     """Chat function with prompt injection protection."""
     # Your LLM call here
