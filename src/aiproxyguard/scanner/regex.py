@@ -117,11 +117,9 @@ class HyperscanScanner(BaseRegexScanner):
                 # Encode pattern and add to compilation list
                 expressions.append(pattern.encode("utf-8"))
                 ids.append(idx)
-                # Use SOM_LEFTMOST to get match start position
-                flags.append(
-                    hyperscan.HS_FLAG_CASELESS
-                    | hyperscan.HS_FLAG_SOM_LEFTMOST
-                )
+                # HS_FLAG_CASELESS only - SOM_LEFTMOST removed to allow larger patterns
+                # Trade-off: We only get match end position, not start
+                flags.append(hyperscan.HS_FLAG_CASELESS)
             except Exception as e:
                 logger.warning(f"Failed to prepare pattern {pattern!r}: {e}")
 
@@ -158,16 +156,22 @@ class HyperscanScanner(BaseRegexScanner):
             flags: int,
             context: list[ScanMatch],
         ) -> None:
-            """Callback for each Hyperscan match."""
+            """Callback for each Hyperscan match.
+
+            Note: Without SOM_LEFTMOST, start is always 0 (scan offset).
+            We estimate matched text by taking up to 100 chars before end.
+            """
             if pattern_id < len(self._pattern_map):
                 pattern, signature = self._pattern_map[pattern_id]
-                matched_text = text_bytes[start:end].decode("utf-8", errors="replace")
+                # Estimate start since SOM_LEFTMOST is disabled
+                estimated_start = max(0, end - 100)
+                matched_text = text_bytes[estimated_start:end].decode("utf-8", errors="replace")
                 context.append(
                     ScanMatch(
                         signature=signature,
                         matched_pattern=pattern,
                         matched_text=matched_text,
-                        start=start,
+                        start=estimated_start,
                         end=end,
                     )
                 )
