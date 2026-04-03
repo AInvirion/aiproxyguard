@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -95,6 +96,8 @@ class HyperscanScanner(BaseRegexScanner):
         super().__init__(signatures)
         self._db: hyperscan.Database | None = None  # type: ignore[name-defined]
         self._pattern_map: list[tuple[str, Signature]] = []
+        # Thread-local storage for scratch spaces to avoid HS_SCRATCH_IN_USE (-10) errors
+        self._scratch_local = threading.local()
         self._compile_database()
 
     def _compile_database(self) -> None:
@@ -139,11 +142,39 @@ class HyperscanScanner(BaseRegexScanner):
             logger.error(f"Failed to compile Hyperscan database: {e}")
             self._db = None
 
+    def _get_scratch(self) -> "hyperscan.Scratch | None":  # type: ignore[name-defined]
+        """Get or create a thread-local scratch space for the current database."""
+        import hyperscan
+
+        if self._db is None:
+            return None
+
+        # Check if this thread already has a scratch for the current db
+        scratch = getattr(self._scratch_local, "scratch", None)
+        db_id = getattr(self._scratch_local, "db_id", None)
+
+        # Create new scratch if none exists or if db was recompiled
+        current_db_id = id(self._db)
+        if scratch is None or db_id != current_db_id:
+            try:
+                scratch = hyperscan.Scratch(self._db)
+                self._scratch_local.scratch = scratch
+                self._scratch_local.db_id = current_db_id
+            except hyperscan.error as e:
+                logger.error(f"Failed to allocate Hyperscan scratch: {e}")
+                return None
+
+        return scratch
+
     def scan(self, text: str) -> list[ScanMatch]:
         """Scan text using Hyperscan batch matching."""
         import hyperscan
 
         if self._db is None or not self._pattern_map:
+            return []
+
+        scratch = self._get_scratch()
+        if scratch is None:
             return []
 
         matches: list[ScanMatch] = []
@@ -177,8 +208,8 @@ class HyperscanScanner(BaseRegexScanner):
                 )
 
         try:
-            # Use Database.scan() directly (hyperscan-python >= 0.7)
-            self._db.scan(text_bytes, on_match, context=matches)
+            # Use thread-local scratch to avoid HS_SCRATCH_IN_USE errors
+            self._db.scan(text_bytes, on_match, scratch=scratch, context=matches)
         except hyperscan.error as e:
             logger.error(f"Hyperscan scan error: {e}")
 
