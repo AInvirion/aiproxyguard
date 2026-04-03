@@ -1,5 +1,5 @@
 ---
-title: Python SDK
+title: Python
 parent: SDKs
 nav_order: 1
 ---

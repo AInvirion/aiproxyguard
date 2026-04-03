@@ -1,5 +1,5 @@
 ---
-title: JavaScript SDK
+title: JavaScript
 parent: SDKs
 nav_order: 2
 ---
