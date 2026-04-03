@@ -11,7 +11,7 @@ The official Python SDK for AIProxyGuard provides a simple, type-safe interface 
 ## Installation
 
 ```bash
-pip install aiproxyguard
+pip install aiproxyguard-python-sdk
 ```
 
 **Requirements:** Python 3.9+
@@ -32,38 +32,36 @@ else:
     print("Safe to proceed")
 ```
 
-## Getting an API Key
-
-To use the cloud API at `aiproxyguard.com`:
-
-1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
-2. Navigate to **Settings** → **API Keys**
-3. Click **Create API Key**
-4. Copy your API key (starts with `apg_`)
-
-> **Security:** Store your API key securely. Never commit it to version control. Use environment variables in production.
-
 ## API Modes
 
-The SDK supports two modes:
+The SDK supports two ways to use AIProxyGuard:
 
-| Mode | URL | Use Case |
-|------|-----|----------|
-| **Proxy** | `http://localhost:8080` | Self-hosted, lower latency |
-| **Cloud** | `https://aiproxyguard.com` | Managed service, no infrastructure |
-
-The mode is auto-detected from the URL:
+| Mode | Use Case |
+|------|----------|
+| **Self-hosted proxy** | Deploy your own proxy (free), no API key required |
+| **Cloud API** | Managed service at `aiproxyguard.com`, requires free API key |
 
 ```python
-# Proxy mode (self-hosted)
+# Self-hosted proxy - no API key required
 client = AIProxyGuard("http://localhost:8080")
 
-# Cloud mode (managed service)
+# Cloud API - managed service (requires free API key)
 client = AIProxyGuard(
     "https://aiproxyguard.com",
     api_key="apg_your_api_key_here"
 )
 ```
+
+### Getting an API Key (Cloud Mode)
+
+API keys are **free**. To use the cloud API:
+
+1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
+2. Go to **Settings** → **API Keys** → **Create API Key**
+3. **Enable the `check` scope** in permissions
+4. Copy your key (starts with `apg_`)
+
+> **Security:** Store your API key securely. Never commit it to version control. Use environment variables in production.
 
 ## Basic Usage
 

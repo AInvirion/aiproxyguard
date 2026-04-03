@@ -5,7 +5,7 @@ nav_order: 2
 
 # Getting Started
 
-> **Prefer not to self-host?** Skip proxy deployment entirely - use the [Cloud API](https://aiproxyguard.com) with our [SDKs](sdks/) for instant protection.
+> **Prefer not to self-host?** Skip proxy deployment entirely - use the [Cloud API](https://aiproxyguard.com) with our [SDKs](sdks/) for instant protection. API keys are free - just enable the `check` scope when creating your key.
 
 ## Installation
 

@@ -11,7 +11,7 @@ The official JavaScript/TypeScript SDK for AIProxyGuard provides a simple, type-
 ## Installation
 
 ```bash
-npm install @aiproxyguard/sdk
+npm install @ainvirion/aiproxyguard-npm-sdk
 ```
 
 **Requirements:** Node.js 18+ (uses native `fetch`)
@@ -19,7 +19,7 @@ npm install @aiproxyguard/sdk
 ## Quick Start
 
 ```typescript
-import { AIProxyGuard } from '@aiproxyguard/sdk';
+import { AIProxyGuard } from '@ainvirion/aiproxyguard-npm-sdk';
 
 // Connect to cloud API
 const client = new AIProxyGuard({
@@ -35,50 +35,42 @@ if (result.flagged) {
 }
 ```
 
-## Getting an API Key
-
-To use the cloud API at `aiproxyguard.com`:
-
-1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
-2. Navigate to **Settings** → **API Keys**
-3. Click **Create API Key**
-4. Copy your API key (starts with `apg_`)
-
-> **Security:** Store your API key securely. Never commit it to version control. Use environment variables in production.
-
 ## API Modes
 
-The SDK supports two modes:
+The SDK supports two ways to use AIProxyGuard:
 
-| Mode | URL | Use Case |
-|------|-----|----------|
-| **Proxy** | `http://localhost:8080` | Self-hosted, lower latency |
-| **Cloud** | `https://aiproxyguard.com` | Managed service, no infrastructure |
-
-The mode is auto-detected from the URL:
+| Mode | Use Case |
+|------|----------|
+| **Self-hosted proxy** | Deploy your own proxy (free), no API key required |
+| **Cloud API** | Managed service at `aiproxyguard.com`, requires free API key |
 
 ```typescript
-// Proxy mode (self-hosted)
+// Self-hosted proxy - no API key required
 const proxy = new AIProxyGuard('http://localhost:8080');
 
-// Cloud mode (managed service) - default when using API key
+// Cloud API - managed service (requires free API key)
 const cloud = new AIProxyGuard({
   apiKey: 'apg_your_api_key_here',
 });
-
-// Explicit mode override
-const explicit = new AIProxyGuard({
-  baseUrl: 'https://your-instance.com',
-  mode: 'proxy',  // Force proxy mode
-});
 ```
+
+### Getting an API Key (Cloud Mode)
+
+API keys are **free**. To use the cloud API:
+
+1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
+2. Go to **Settings** → **API Keys** → **Create API Key**
+3. **Enable the `check` scope** in permissions
+4. Copy your key (starts with `apg_`)
+
+> **Security:** Store your API key securely. Never commit it to version control. Use environment variables in production.
 
 ## Basic Usage
 
 ### Checking Text
 
 ```typescript
-import { AIProxyGuard } from '@aiproxyguard/sdk';
+import { AIProxyGuard } from '@ainvirion/aiproxyguard-npm-sdk';
 
 const client = new AIProxyGuard({
   apiKey: 'apg_your_api_key_here',
@@ -154,7 +146,7 @@ Protect your Express routes with automatic prompt injection detection:
 
 ```typescript
 import express from 'express';
-import { AIProxyGuard, guardMiddleware } from '@aiproxyguard/sdk';
+import { AIProxyGuard, guardMiddleware } from '@ainvirion/aiproxyguard-npm-sdk';
 
 const app = express();
 const client = new AIProxyGuard({ apiKey: 'apg_your_api_key_here' });
@@ -203,7 +195,7 @@ app.post('/chat', guardMiddleware(client, { onBlock: 'continue' }), (req, res) =
 ## Helper Functions
 
 ```typescript
-import { isSafe, isBlocked } from '@aiproxyguard/sdk';
+import { isSafe, isBlocked } from '@ainvirion/aiproxyguard-npm-sdk';
 
 const result = await client.check(text);
 
@@ -226,7 +218,7 @@ import {
   ConnectionError,
   TimeoutError,
   RateLimitError,
-} from '@aiproxyguard/sdk';
+} from '@ainvirion/aiproxyguard-npm-sdk';
 
 const client = new AIProxyGuard({ apiKey: 'apg_xxx' });
 
@@ -327,9 +319,9 @@ import type {
   CheckResult,         // Result from check()
   Threat,              // { type, confidence, rule }
   AIProxyGuardConfig,  // Constructor config
-} from '@aiproxyguard/sdk';
+} from '@ainvirion/aiproxyguard-npm-sdk';
 
-import { DEFAULT_BASE_URL } from '@aiproxyguard/sdk';
+import { DEFAULT_BASE_URL } from '@ainvirion/aiproxyguard-npm-sdk';
 // 'https://aiproxyguard.com'
 ```
 
@@ -368,7 +360,7 @@ The SDK automatically retries failed requests with exponential backoff:
 ## Complete Example
 
 ```typescript
-import { AIProxyGuard, isBlocked } from '@aiproxyguard/sdk';
+import { AIProxyGuard, isBlocked } from '@ainvirion/aiproxyguard-npm-sdk';
 
 // Initialize client
 const client = new AIProxyGuard({

@@ -10,10 +10,12 @@ Official client libraries for AIProxyGuard. Both SDKs work with the self-hosted 
 
 | SDK | Package | Description |
 |-----|---------|-------------|
-| [Python](python-sdk) | `aiproxyguard` | Sync/async, decorators, batch operations |
-| [JavaScript](javascript-sdk) | `@aiproxyguard/sdk` | TypeScript, Express middleware, native fetch |
+| [Python](python-sdk) | `aiproxyguard-python-sdk` | Sync/async, decorators, batch operations |
+| [JavaScript](javascript-sdk) | `@ainvirion/aiproxyguard-npm-sdk` | TypeScript, Express middleware, native fetch |
 
 ## Which to Use?
 
-- **Self-hosted proxy**: Point your existing OpenAI/Anthropic SDK at the proxy URL. Use our SDKs for direct `/check` calls or advanced features.
-- **Cloud API**: Use our SDKs for the simplest integration - no proxy deployment needed.
+Both options are **free**:
+
+- **Self-hosted proxy**: Deploy your own proxy and point your existing OpenAI/Anthropic SDK at it. No API key required. Use our SDKs for direct `/check` calls or advanced features.
+- **Cloud API**: Use our SDKs with a free API key at `aiproxyguard.com` - no proxy deployment needed. When creating your API key, enable the `check` scope in permissions.
