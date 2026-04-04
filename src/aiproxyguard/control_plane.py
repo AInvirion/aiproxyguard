@@ -427,6 +427,8 @@ class ControlPlaneClient:
             if new_tier != self._tier:
                 logger.info(f"Account tier changed: {self._tier} -> {new_tier}")
                 self._tier = new_tier
+                # Reset manifest verifier state since different tiers have separate chains
+                self._manifest_verifier.reset_state()
                 # Re-sync signatures when tier changes (includes ML models from bundles)
                 await self._fetch_and_apply_signatures()
 
