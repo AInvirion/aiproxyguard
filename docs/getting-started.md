@@ -30,7 +30,7 @@ docker run -d -p 8080:8080 \
 
 The default config enables:
 - OpenAI and Anthropic upstreams
-- Request scanning with regex + heuristics
+- Professional signatures with sensibility adjustment
 - Blocking for prompt injection and jailbreak
 - Prometheus metrics at `/metrics`
 

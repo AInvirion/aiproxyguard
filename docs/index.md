@@ -34,7 +34,7 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 | Feature | Status | Description |
 |---------|--------|-------------|
 | **Multi-Provider Routing** | Production | OpenAI, Anthropic, OpenRouter, Ollama |
-| **Request Scanning** | Production | Regex + heuristics with configurable timeouts |
+| **Request Scanning** | Production | Professional signatures with sensibility adjustment |
 | **Response Scanning** | Production | Detect sensitive data leakage |
 | **Policy Engine** | Production | Per-category actions with thresholds |
 | **Prometheus Metrics** | Production | Full observability at `/metrics` |
@@ -61,5 +61,4 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 - [Configuration](configuration) - Full config reference
 - [Proxy Deployment](proxy-deployment/) - Docker, cloud platforms, production guides
 - [API Reference](api-reference) - Endpoints and response formats
-- [Security](security) - Threat detection and reporting
 - [Benchmarks](benchmarks) - Detection accuracy and performance metrics
