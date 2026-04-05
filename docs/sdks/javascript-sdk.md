@@ -405,4 +405,3 @@ main();
 
 - [API Reference](api-reference) - Full endpoint documentation
 - [Configuration](configuration) - Proxy configuration options
-- [Security](security) - Detection categories and threat model
