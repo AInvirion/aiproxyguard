@@ -10,7 +10,7 @@ on:
 env:
   REGISTRY_DOCKERHUB: docker.io
   REGISTRY_GHCR: ghcr.io
-  IMAGE_NAME_DOCKERHUB: ovalenzuela/aiproxyguard
+  IMAGE_NAME_DOCKERHUB: ainvirion/aiproxyguard
   IMAGE_NAME_GHCR: ainvirion/aiproxyguard
 
 jobs:

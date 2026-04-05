@@ -218,7 +218,7 @@ docker run -d -p 8080:8080 \
   -e AIPROXYGUARD_CONTROL_PLANE_ENABLED=true \
   -e AIPROXYGUARD_CONTROL_PLANE_URL=https://aiproxyguard.com \
   -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-api-key-here \
-  ovalenzuela/aiproxyguard:latest
+  ainvirion/aiproxyguard:latest
 ```
 
 **Option 2: Config File**
@@ -288,7 +288,7 @@ The proxy continues running in **offline mode** with:
 docker stop aiproxyguard
 docker run -d --name aiproxyguard -p 8080:8080 \
   -e AIPROXYGUARD_CONTROL_PLANE_API_KEY=your-new-api-key \
-  ovalenzuela/aiproxyguard:latest
+  ainvirion/aiproxyguard:latest
 
 # Or with docker-compose
 docker-compose down
@@ -423,7 +423,7 @@ docker run -d --name aiproxyguard \
   -e RATE_LIMIT_RATE=100/minute \
   -e RATE_LIMIT_BURST=50 \
   -e RATE_LIMIT_WHITELIST=10.0.0.0/8 \
-  ovalenzuela/aiproxyguard:latest
+  ainvirion/aiproxyguard:latest
 ```
 
 **Option 3: Systemd service**
@@ -477,7 +477,7 @@ sudo RATE_LIMIT_ENABLED=false ./deploy/rate-limit.sh
 docker run -d -p 8080:8080 \
   -v $(pwd)/config.yaml:/etc/aiproxyguard/config.yaml \
   -v $(pwd)/signatures:/app/signatures \
-  ovalenzuela/aiproxyguard:latest
+  ainvirion/aiproxyguard:latest
 ```
 
 ## Example Configs

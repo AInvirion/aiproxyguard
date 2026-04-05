@@ -24,7 +24,7 @@ docker run -d -p 8080:8080 \
   ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
-> **Alternative:** Also available on Docker Hub as `ovalenzuela/aiproxyguard`
+> **Alternative:** Also available on Docker Hub as `ainvirion/aiproxyguard`
 
 > **Note:** The Docker image includes basic detection rules out of the box. For continuously updated signatures and advanced threat detection, connect to the [Cloud control plane](https://aiproxyguard.com) or use the Cloud API directly.
 
