@@ -47,7 +47,7 @@ Deploy using the Google Cloud Console web interface.
 1. Select **Deploy one revision from an existing container image**
 2. **Container image URL**: `ghcr.io/ainvirion/aiproxyguard:latest`
 
-> **Docker Hub alternative:** Use `docker.io/ovalenzuela/aiproxyguard:latest`
+> **Docker Hub alternative:** Use `docker.io/ainvirion/aiproxyguard:latest`
 
 ### Step 3: Configure Service
 
@@ -126,7 +126,7 @@ gcloud run deploy aiproxyguard \
   --allow-unauthenticated
 ```
 
-> **Docker Hub:** Use `docker.io/ovalenzuela/aiproxyguard:latest`
+> **Docker Hub:** Use `docker.io/ainvirion/aiproxyguard:latest`
 
 ### With All Options
 

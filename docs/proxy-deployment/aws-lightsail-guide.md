@@ -43,7 +43,7 @@ Deploy the pre-built container image using the Lightsail console.
 | **Container name** | `aiproxyguard` |
 | **Image** | `ghcr.io/ainvirion/aiproxyguard:latest` |
 
-> **Docker Hub alternative:** Use `ovalenzuela/aiproxyguard:latest`
+> **Docker Hub alternative:** Use `ainvirion/aiproxyguard:latest`
 
 4. Click **Add open port**:
    - **Port**: `8080`

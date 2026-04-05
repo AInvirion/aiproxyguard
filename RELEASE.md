@@ -71,8 +71,8 @@ After a full release, these images are available:
 
 | Registry | Image |
 |----------|-------|
-| Docker Hub | `ovalenzuela/aiproxyguard:X.Y.Z` |
-| Docker Hub | `ovalenzuela/aiproxyguard:latest` |
+| Docker Hub | `ainvirion/aiproxyguard:X.Y.Z` |
+| Docker Hub | `ainvirion/aiproxyguard:latest` |
 | GHCR | `ghcr.io/ainvirion/aiproxyguard:X.Y.Z` |
 | GHCR | `ghcr.io/ainvirion/aiproxyguard:latest` |
 

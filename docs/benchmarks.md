@@ -75,7 +75,7 @@ pibench run https://your-proxy.app -d data/baseline_v2.jsonl -o results.json
 
 ```bash
 # Start AIProxyGuard locally
-docker run -d -p 8080:8080 ovalenzuela/aiproxyguard:latest
+docker run -d -p 8080:8080 ainvirion/aiproxyguard:latest
 
 # Run benchmark
 pibench run http://localhost:8080 -d data/baseline_v2.jsonl

@@ -8,7 +8,7 @@ nav_order: 1
 
 Deploy AIProxyGuard locally or on any Docker-compatible host.
 
-> **Image:** `ghcr.io/ainvirion/aiproxyguard` (primary) or `ovalenzuela/aiproxyguard` (Docker Hub)
+> **Image:** `ghcr.io/ainvirion/aiproxyguard` (primary) or `ainvirion/aiproxyguard` (Docker Hub)
 
 ## Quick Start
 

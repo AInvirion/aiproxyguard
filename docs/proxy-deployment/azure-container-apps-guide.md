@@ -43,7 +43,7 @@ Deploy using the Azure Portal web interface.
 2. **Image source**: Select **Docker Hub or other registries**
 3. **Image and tag**: `ghcr.io/ainvirion/aiproxyguard:latest`
 
-> **Docker Hub alternative:** Use `docker.io/ovalenzuela/aiproxyguard:latest`
+> **Docker Hub alternative:** Use `docker.io/ainvirion/aiproxyguard:latest`
 
 ### Step 5: Configure Ingress
 
@@ -151,7 +151,7 @@ az containerapp create \
   --output tsv
 ```
 
-> **Docker Hub:** Use `docker.io/ovalenzuela/aiproxyguard:latest`
+> **Docker Hub:** Use `docker.io/ainvirion/aiproxyguard:latest`
 
 ### Get the URL
 

@@ -27,7 +27,7 @@ curl http://localhost:8080/healthz
 
 Then point your LLM client to `http://localhost:8080/openai/v1` instead of `https://api.openai.com/v1`.
 
-> **Alternative:** Also available on Docker Hub as `ovalenzuela/aiproxyguard`
+> **Alternative:** Also available on Docker Hub as `ainvirion/aiproxyguard`
 
 ## Features
 

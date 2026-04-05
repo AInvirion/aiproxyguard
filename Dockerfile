@@ -52,6 +52,13 @@ ENV LC_ALL=en_US.UTF-8
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin/aiproxyguard /usr/local/bin/aiproxyguard
 
+# Remove pip, wheel, setuptools - not needed at runtime and avoids CVEs
+RUN rm -rf /usr/local/lib/python3.11/site-packages/pip* \
+    /usr/local/lib/python3.11/site-packages/wheel* \
+    /usr/local/lib/python3.11/site-packages/setuptools* \
+    /usr/local/bin/pip* \
+    /usr/local/bin/wheel
+
 # Copy application
 COPY src/ ./src/
 COPY models/ ./models/
@@ -63,8 +70,16 @@ COPY signatures/ /app/signatures/
 RUN mkdir -p /etc/aiproxyguard
 COPY config.docker.yaml /etc/aiproxyguard/config.yaml
 
+# Create non-root user for security
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid 1000 --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app /etc/aiproxyguard
+
 # Set default signature path
 ENV AIPROXYGUARD_SIGNATURES_PATH=/app/signatures
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8080

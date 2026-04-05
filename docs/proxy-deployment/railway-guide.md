@@ -28,7 +28,7 @@ Deploy using the Railway web dashboard.
 2. Select **Docker Image**
 3. Enter the image URL: `ghcr.io/ainvirion/aiproxyguard:latest`
 
-> **Docker Hub alternative:** Use `ovalenzuela/aiproxyguard:latest`
+> **Docker Hub alternative:** Use `ainvirion/aiproxyguard:latest`
 
 4. Press **Enter** and click **Deploy**
 
@@ -102,7 +102,7 @@ Select **Empty Project** when prompted.
 railway up --image ghcr.io/ainvirion/aiproxyguard:latest
 ```
 
-> **Docker Hub:** Use `ovalenzuela/aiproxyguard:latest`
+> **Docker Hub:** Use `ainvirion/aiproxyguard:latest`
 
 ### Step 3: Configure Variables
 

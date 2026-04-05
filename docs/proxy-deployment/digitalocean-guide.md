@@ -35,7 +35,7 @@ Deploy the pre-built container image from GitHub Container Registry or Docker Hu
 
 **Docker Hub:**
 - Image Source: **Docker Hub**
-- Repository: `ovalenzuela/aiproxyguard`
+- Repository: `ainvirion/aiproxyguard`
 - Tag: `latest`
 
 3. Click **Next**
@@ -148,7 +148,7 @@ services:
       - path: /
 ```
 
-> **Docker Hub:** Use `registry_type: DOCKER_HUB`, `registry: ovalenzuela`
+> **Docker Hub:** Use `registry_type: DOCKER_HUB`, `registry: ainvirion`
 
 ### Step 2: Deploy
 
