@@ -111,7 +111,7 @@ Lower thresholds catch more attacks but increase false positives:
 ```yaml
 policy:
   categories:
-    prompt_injection:
+    prompt-injection:
       threshold: 0.3  # Very aggressive
     jailbreak:
       threshold: 0.3
@@ -128,7 +128,7 @@ Higher thresholds reduce false positives but miss some attacks:
 ```yaml
 policy:
   categories:
-    prompt_injection:
+    prompt-injection:
       threshold: 0.7  # Conservative
     jailbreak:
       threshold: 0.7

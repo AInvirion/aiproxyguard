@@ -199,7 +199,7 @@ aiproxyguard_scans_total{scanner="pipeline",result="block"} 2
 
 # HELP aiproxyguard_detections_total Total number of detections
 # TYPE aiproxyguard_detections_total counter
-aiproxyguard_detections_total{category="prompt_injection",action="block"} 1
+aiproxyguard_detections_total{category="prompt-injection",action="block"} 1
 aiproxyguard_detections_total{category="jailbreak",action="block"} 1
 
 # HELP aiproxyguard_signatures_loaded Number of signatures loaded
@@ -217,16 +217,16 @@ Returned when a request is blocked by the scanner.
 {
   "error": {
     "type": "content_blocked",
-    "code": "prompt_injection_detected",
+    "code": "prompt-injection-detected",
     "message": "Request blocked: potential prompt injection detected"
   }
 }
 ```
 
 **Possible codes:**
-- `prompt_injection_detected`
-- `jailbreak_detected`
-- `encoding_evasion_detected`
+- `prompt-injection-detected`
+- `jailbreak-detected`
+- `encoding-evasion-detected`
 
 ### Response Blocked (502)
 

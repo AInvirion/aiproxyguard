@@ -150,7 +150,7 @@ class TelemetryEvent:
     """A detection event to report to the control plane."""
 
     event_type: str  # "detection", "block", "allow"
-    category: str  # "prompt_injection", "jailbreak", etc.
+    category: str  # "prompt-injection", "jailbreak", etc.
     signature_id: str | None = None
     latency_ms: int | None = None
     provider: str | None = None  # "ollama", "openai", "anthropic", etc.
@@ -629,7 +629,7 @@ class ControlPlaneClient:
         Format 1 (detection-based, per-category thresholds):
             {
                 "detection": {
-                    "prompt_injection": {"enabled": true, "action": "warn", "threshold": 0.7},
+                    "prompt-injection": {"enabled": true, "action": "warn", "threshold": 0.7},
                     ...
                 },
                 "logging": {...}
@@ -638,7 +638,7 @@ class ControlPlaneClient:
         Format 2 (categories-based, global thresholds):
             {
                 "categories": {
-                    "prompt_injection": {"enabled": true, "action": "block"},
+                    "prompt-injection": {"enabled": true, "action": "block"},
                     ...
                 },
                 "thresholds": {"block_score": 0.8, "warn_score": 0.5}
@@ -648,7 +648,7 @@ class ControlPlaneClient:
             {
                 "default_action": "block",
                 "categories": {
-                    "prompt_injection": {"action": "warn", "threshold": 0.7},
+                    "prompt-injection": {"action": "warn", "threshold": 0.7},
                     ...
                 },
                 "allowlists": [...]

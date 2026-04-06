@@ -3,7 +3,7 @@
   "model_version": "1.0.1",
   "categories": [
     "safe",
-    "prompt_injection",
+    "prompt-injection",
     "jailbreak"
   ],
   "format": "sklearn-joblib",
