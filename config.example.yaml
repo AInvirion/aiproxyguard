@@ -57,18 +57,51 @@ ml_classifier:
 policy:
   default_action: "block"  # Default: "allow", "log", "warn", or "block"
   categories:
-    prompt_injection:
+    # Free tier categories
+    prompt-injection:
       action: "block"
       threshold: 0.8       # Confidence threshold (0.0-1.0)
     jailbreak:
       action: "block"
       threshold: 0.7
-    # encoding_evasion:    # Uncomment to customize heuristic handling
+    encoding-bypass:
+      action: "block"
+      threshold: 0.6
+    delimiter-injection:
+      action: "block"
+      threshold: 0.7
+    indirect-injection:
+      action: "block"
+      threshold: 0.7
+    role-manipulation:
+      action: "block"
+      threshold: 0.7
+    # Pro tier categories (requires Pro license)
+    # pii:
+    #   action: "block"
+    #   threshold: 0.8
+    # unicode-evasion:
     #   action: "warn"
     #   threshold: 0.6
+    # social-engineering:
+    #   action: "block"
+    #   threshold: 0.7
+    # harmful-content:
+    #   action: "block"
+    #   threshold: 0.8
+    # code-generation:
+    #   action: "log"
+    #   threshold: 0.7
+    # Enterprise tier categories (requires Enterprise license)
+    # child-safety:
+    #   action: "block"
+    #   threshold: 0.8
+    # child-safety-response:
+    #   action: "block"
+    #   threshold: 0.8
   # allowlists:            # Uncomment to bypass scanning for specific clients
   #   - client_id: "internal-service-*"
-  #     categories: ["prompt_injection"]
+  #     categories: ["prompt-injection"]
 
 # Signature location
 signatures:

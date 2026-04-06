@@ -34,7 +34,7 @@ ml_classifier:
 policy:
   default_action: "block"
   categories:
-    prompt_injection:
+    prompt-injection:
       action: "block"
       threshold: 0.8
     jailbreak:

@@ -88,7 +88,7 @@ class ScannerPipeline:
                 score = (action_priority.get("warn", 0), match.confidence)
                 if score > best_score:
                     best_score = score
-                    best = ("warn", "encoding_evasion", None, match.description, match.confidence)
+                    best = ("warn", "encoding-bypass", None, match.description, match.confidence)
 
         if self._ml_classifier and self._ml_classifier.is_available():
             for match in self._ml_classifier.predict(text):
