@@ -87,6 +87,22 @@ class TestTelemetryEvent:
         assert event.provider is None
         assert event.endpoint is None
 
+    def test_telemetry_event_with_model_and_tokens(self):
+        """Test TelemetryEvent includes model and input_tokens fields."""
+        event = TelemetryEvent(
+            event_type="block",
+            category="prompt_injection",
+            signature_id="PI-001",
+            latency_ms=12,
+            provider="openai",
+            endpoint="/v1/chat/completions",
+            model="gpt-4o",
+            input_tokens=1250,
+        )
+
+        assert event.model == "gpt-4o"
+        assert event.input_tokens == 1250
+
 
 class TestControlPlaneClient:
     """Tests for ControlPlaneClient."""

@@ -155,6 +155,8 @@ class TelemetryEvent:
     latency_ms: int | None = None
     provider: str | None = None  # "ollama", "openai", "anthropic", etc.
     endpoint: str | None = None  # "/api/chat", "/v1/completions", etc.
+    model: str | None = None  # "gpt-4o", "claude-3-sonnet", etc.
+    input_tokens: int | None = None  # Token count of blocked prompt
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
