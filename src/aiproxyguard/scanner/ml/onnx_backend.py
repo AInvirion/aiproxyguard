@@ -94,7 +94,7 @@ class ONNXBackend:
             self._max_length = config.get("max_length", 512)
         else:
             logger.warning(f"Config file not found: {config_file}, using defaults")
-            self._categories = ["safe", "prompt_injection", "jailbreak"]
+            self._categories = ["safe", "prompt-injection", "jailbreak"]
 
         # Load ONNX session with optimizations
         sess_options = ort.SessionOptions()

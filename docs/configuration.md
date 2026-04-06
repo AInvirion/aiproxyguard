@@ -62,18 +62,18 @@ scanner:
 policy:
   default_action: "block"    # Default action: "allow", "log", "warn", "block"
   categories:
-    prompt_injection:
+    prompt-injection:
       action: "block"
       threshold: 0.8         # Confidence threshold (0.0-1.0)
     jailbreak:
       action: "block"
       threshold: 0.7
-    encoding_evasion:
+    encoding-evasion:
       action: "warn"
       threshold: 0.6
   allowlists:                # Bypass scanning for specific clients
     - client_id: "internal-service-*"
-      categories: ["prompt_injection"]
+      categories: ["prompt-injection"]
 
 # Signature location
 signatures:
@@ -343,8 +343,8 @@ Each detection category has a configurable **threshold** (0.0-1.0) that controls
 | `prompt-injection` | 0.5 | block |
 | `jailbreak` | 0.5 | block |
 | `pii` | 0.5 | warn |
-| `data_exfil` | 0.5 | block |
-| `harmful_content` | 0.5 | block |
+| `data-exfil` | 0.5 | block |
+| `harmful-content` | 0.5 | block |
 | `encoding-bypass` | 0.7 | block |
 | `delimiter-injection` | 0.7 | block |
 | `indirect-injection` | 0.7 | block |
@@ -520,7 +520,7 @@ scanner:
 policy:
   default_action: "block"
   categories:
-    prompt_injection:
+    prompt-injection:
       action: "block"
       threshold: 0.7
     jailbreak:

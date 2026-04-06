@@ -25,6 +25,16 @@ from aiproxyguard.scanner.response import ResponseScanner, ResponseScanResult
 from aiproxyguard.scanner.ml import MLClassifier
 
 
+def normalize_category_slug(category: str) -> str:
+    """Normalize category slug to use hyphens (standard format).
+
+    Converts underscores to hyphens for consistency:
+    - prompt_injection -> prompt-injection
+    - encoding_bypass -> encoding-bypass
+    """
+    return category.replace("_", "-")
+
+
 @dataclass
 class ScanResult:
     action: str  # allow, log, warn, block
@@ -71,12 +81,14 @@ class ScannerPipeline:
             for match in self._regex_scanner.scan(text):
                 internal_detail = f"pattern:{match.matched_pattern}"
                 all_details.append(internal_detail)
+                # Normalize category slug (child_safety_response -> child-safety-response)
+                normalized_category = normalize_category_slug(match.signature.category)
                 score = (action_priority.get(match.signature.action, 0), 0.9)
                 if score > best_score:
                     best_score = score
                     best = (
                         match.signature.action,
-                        match.signature.category,
+                        normalized_category,
                         match.signature.id,
                         internal_detail,
                         0.9,
@@ -95,14 +107,16 @@ class ScannerPipeline:
                 # Skip non-threat categories (e.g., "safe", "benign")
                 if match.category.lower() in ("safe", "benign", "normal", "clean"):
                     continue
-                detail = f"ml:{match.model_id}:{match.category}:{match.confidence:.2f}"
+                # Normalize category slug (prompt_injection -> prompt-injection)
+                normalized_category = normalize_category_slug(match.category)
+                detail = f"ml:{match.model_id}:{normalized_category}:{match.confidence:.2f}"
                 all_details.append(detail)
                 # Use configured action from MLClassifierConfig
                 ml_action = self._ml_classifier._config.action
                 score = (action_priority.get(ml_action, 0), match.confidence)
                 if score > best_score:
                     best_score = score
-                    best = (ml_action, match.category, match.model_id, detail, match.confidence)
+                    best = (ml_action, normalized_category, match.model_id, detail, match.confidence)
 
         if best is None:
             return ScanResult(action="allow")

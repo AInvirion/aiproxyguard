@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class MLMatch:
     """Result from ML classifier prediction."""
 
-    category: str  # "prompt_injection", "jailbreak", etc.
+    category: str  # "prompt-injection", "jailbreak", etc.
     confidence: float  # 0.0 - 1.0
     model_id: str  # "prompt-classifier-v1"
     model_version: str  # "1.0.0"
