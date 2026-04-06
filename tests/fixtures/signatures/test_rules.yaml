@@ -7,7 +7,7 @@ signatures:
     name: Instruction override attempt
     severity: critical
     action: block
-    category: prompt_injection
+    category: prompt-injection
     pattern: "(?i)(ignore|disregard|forget)\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions?|prompts?|rules?|guidelines?)"
     description: Attempts to override system instructions
 

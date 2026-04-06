@@ -85,7 +85,7 @@ def proxy_config() -> Config:
         policy=PolicyConfig(
             default_action="block",
             categories={
-                "prompt_injection": PolicyCategoryConfig(action="block", threshold=0.5),
+                "prompt-injection": PolicyCategoryConfig(action="block", threshold=0.5),
             },
         ),
         signatures=SignatureConfig(path=TEST_SIGNATURES_PATH),
@@ -124,4 +124,4 @@ async def test_malicious_request_blocked(mock_upstream, proxy_client) -> None:
     assert resp.status == 400
     data = await resp.json()
     assert data["error"]["type"] == "content_blocked"
-    assert "prompt_injection" in data["error"]["code"]
+    assert "prompt-injection" in data["error"]["code"]
