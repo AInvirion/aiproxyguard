@@ -14,8 +14,6 @@
 
 """Tests for token counting module."""
 
-import pytest
-
 from aiproxyguard.tokens import count_tokens
 
 
