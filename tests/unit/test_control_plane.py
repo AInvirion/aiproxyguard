@@ -87,6 +87,22 @@ class TestTelemetryEvent:
         assert event.provider is None
         assert event.endpoint is None
 
+    def test_telemetry_event_with_model_and_tokens(self):
+        """Test TelemetryEvent includes model and input_tokens fields."""
+        event = TelemetryEvent(
+            event_type="block",
+            category="prompt_injection",
+            signature_id="PI-001",
+            latency_ms=12,
+            provider="openai",
+            endpoint="/v1/chat/completions",
+            model="gpt-4o",
+            input_tokens=1250,
+        )
+
+        assert event.model == "gpt-4o"
+        assert event.input_tokens == 1250
+
 
 class TestControlPlaneClient:
     """Tests for ControlPlaneClient."""
@@ -157,6 +173,30 @@ class TestControlPlaneClient:
         )
 
         assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_report_detection_accepts_model_and_tokens(self):
+        """Test report_detection accepts model and input_tokens parameters."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True  # Simulate successful registration
+
+        # This should not raise - just verify the signature accepts the params
+        await client.report_detection(
+            event_type="block",
+            category="prompt_injection",
+            signature_id="PI-001",
+            latency_ms=12,
+            provider="openai",
+            endpoint="/v1/chat/completions",
+            model="gpt-4o",
+            input_tokens=1250,
+        )
+        # Verify event was buffered with correct fields
+        assert len(client._telemetry_buffer) == 1
+        event = client._telemetry_buffer[0]
+        assert event.model == "gpt-4o"
+        assert event.input_tokens == 1250
 
     def test_translate_policy_config(self):
         """Policy config translation should work correctly."""
@@ -364,3 +404,34 @@ class TestControlPlaneClientWithMockedHTTP:
 
         # Should have been registered during heartbeat
         assert client._registered is True
+
+    @pytest.mark.asyncio
+    async def test_telemetry_flush_includes_model_and_tokens(self):
+        """Test that flushed telemetry includes model and input_tokens."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        # Mock the HTTP client
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client.report_detection(
+            event_type="block",
+            category="prompt_injection",
+            model="gpt-4o",
+            input_tokens=1250,
+        )
+
+        await client._flush_telemetry()
+
+        # Verify the request was made with correct payload
+        client._client.post.assert_called_once()
+        call_args = client._client.post.call_args
+        payload = call_args.kwargs["json"]
+        event = payload["events"][0]
+        assert event["model"] == "gpt-4o"
+        assert event["input_tokens"] == 1250

@@ -36,6 +36,7 @@ from aiproxyguard.signatures.loader import load_signatures, get_signature_versio
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.logging import get_logger, update_logging
 from aiproxyguard.control_plane import init_client, get_client
+from aiproxyguard.tokens import count_tokens
 
 logger = get_logger("server")
 
@@ -345,6 +346,19 @@ async def proxy_handler(request: web.Request) -> web.Response:
                         "internal_details": scan_result.details,  # For debugging only
                     },
                 )
+                # Extract model and count tokens for telemetry
+                model = None
+                input_tokens = None
+                try:
+                    import json
+                    body_json = json.loads(text)
+                    if isinstance(body_json, dict):
+                        model = body_json.get("model")
+                        if model is not None:
+                            model = str(model)[:100]  # Truncate to 100 chars
+                    input_tokens = count_tokens(text, model)
+                except Exception:
+                    pass  # Best effort - don't fail the block
                 # Report to control plane
                 cp_client = get_client()
                 if cp_client:
@@ -355,6 +369,8 @@ async def proxy_handler(request: web.Request) -> web.Response:
                         latency_ms=int(scan_duration * 1000),
                         provider=route.provider,
                         endpoint=path,
+                        model=model,
+                        input_tokens=input_tokens,
                     ))
                 # Return generic message - never expose signature patterns
                 return web.json_response({

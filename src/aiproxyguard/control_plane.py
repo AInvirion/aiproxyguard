@@ -155,6 +155,8 @@ class TelemetryEvent:
     latency_ms: int | None = None
     provider: str | None = None  # "ollama", "openai", "anthropic", etc.
     endpoint: str | None = None  # "/api/chat", "/v1/completions", etc.
+    model: str | None = None  # "gpt-4o", "claude-3-sonnet", etc.
+    input_tokens: int | None = None  # Token count of blocked prompt
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -1192,6 +1194,8 @@ class ControlPlaneClient:
         latency_ms: int | None = None,
         provider: str | None = None,
         endpoint: str | None = None,
+        model: str | None = None,
+        input_tokens: int | None = None,
     ) -> None:
         """Buffer a detection event for reporting."""
         if not self.config.enabled or not self.config.report_telemetry:
@@ -1207,6 +1211,8 @@ class ControlPlaneClient:
             latency_ms=latency_ms,
             provider=provider,
             endpoint=endpoint,
+            model=model,
+            input_tokens=input_tokens,
         )
 
         async with self._telemetry_lock:
@@ -1243,6 +1249,8 @@ class ControlPlaneClient:
                             "latency_ms": e.latency_ms,
                             "provider": e.provider,
                             "endpoint": e.endpoint,
+                            "model": e.model,
+                            "input_tokens": e.input_tokens,
                         }
                         for e in events
                     ]
