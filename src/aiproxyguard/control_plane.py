@@ -1249,6 +1249,8 @@ class ControlPlaneClient:
                             "latency_ms": e.latency_ms,
                             "provider": e.provider,
                             "endpoint": e.endpoint,
+                            "model": e.model,
+                            "input_tokens": e.input_tokens,
                         }
                         for e in events
                     ]

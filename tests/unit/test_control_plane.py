@@ -404,3 +404,34 @@ class TestControlPlaneClientWithMockedHTTP:
 
         # Should have been registered during heartbeat
         assert client._registered is True
+
+    @pytest.mark.asyncio
+    async def test_telemetry_flush_includes_model_and_tokens(self):
+        """Test that flushed telemetry includes model and input_tokens."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        # Mock the HTTP client
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client.report_detection(
+            event_type="block",
+            category="prompt_injection",
+            model="gpt-4o",
+            input_tokens=1250,
+        )
+
+        await client._flush_telemetry()
+
+        # Verify the request was made with correct payload
+        client._client.post.assert_called_once()
+        call_args = client._client.post.call_args
+        payload = call_args.kwargs["json"]
+        event = payload["events"][0]
+        assert event["model"] == "gpt-4o"
+        assert event["input_tokens"] == 1250
