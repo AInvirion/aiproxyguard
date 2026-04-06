@@ -174,6 +174,30 @@ class TestControlPlaneClient:
 
         assert len(client._telemetry_buffer) == 0
 
+    @pytest.mark.asyncio
+    async def test_report_detection_accepts_model_and_tokens(self):
+        """Test report_detection accepts model and input_tokens parameters."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True  # Simulate successful registration
+
+        # This should not raise - just verify the signature accepts the params
+        await client.report_detection(
+            event_type="block",
+            category="prompt_injection",
+            signature_id="PI-001",
+            latency_ms=12,
+            provider="openai",
+            endpoint="/v1/chat/completions",
+            model="gpt-4o",
+            input_tokens=1250,
+        )
+        # Verify event was buffered with correct fields
+        assert len(client._telemetry_buffer) == 1
+        event = client._telemetry_buffer[0]
+        assert event.model == "gpt-4o"
+        assert event.input_tokens == 1250
+
     def test_translate_policy_config(self):
         """Policy config translation should work correctly."""
         config = MockControlPlaneConfig()

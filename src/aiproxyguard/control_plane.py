@@ -1194,6 +1194,8 @@ class ControlPlaneClient:
         latency_ms: int | None = None,
         provider: str | None = None,
         endpoint: str | None = None,
+        model: str | None = None,
+        input_tokens: int | None = None,
     ) -> None:
         """Buffer a detection event for reporting."""
         if not self.config.enabled or not self.config.report_telemetry:
@@ -1209,6 +1211,8 @@ class ControlPlaneClient:
             latency_ms=latency_ms,
             provider=provider,
             endpoint=endpoint,
+            model=model,
+            input_tokens=input_tokens,
         )
 
         async with self._telemetry_lock:
