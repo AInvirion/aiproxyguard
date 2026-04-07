@@ -7,24 +7,35 @@ nav_order: 8
 
 AIProxyGuard detection accuracy is measured using [PIBench](https://github.com/AInvirion/prompt-injection-benchmark), an open-source prompt injection benchmark tool.
 
-## Current Performance (v0.2.42)
+> **CRITICAL: Reproducible Benchmarking**
+>
+> **ALWAYS use the canonical dataset for benchmarks:**
+> ```bash
+> pibench run URL -d data/baseline_v2.jsonl
+> ```
+>
+> **NEVER use `--max-samples` for official comparisons.** Random sampling changes category distribution and produces incomparable results. Our model detects jailbreaks at 79% but prompt injections at only 38% - different jailbreak ratios will drastically change the balanced score.
+>
+> A debugging session wasted hours investigating a "regression" from 76% to 67% that was entirely caused by comparing results from different sample distributions.
+
+## Current Performance (v0.2.47 + signatures v1.5.7)
 
 | Metric | Value |
 |--------|-------|
-| **Balanced Score** | 75.81% |
-| True Positive Rate | 53.65% |
-| True Negative Rate | 97.97% |
-| Precision | 96.45% |
-| F1 Score | 68.95% |
-| Avg Latency | 91.3 ms |
+| **Balanced Score** | 76.50% |
+| True Positive Rate | 57.69% |
+| True Negative Rate | 95.31% |
+| Precision | 92.48% |
+| F1 Score | 71.05% |
+| Avg Latency | 73.9 ms |
 
 ### Detection by Category
 
 | Category | Detection Rate | Details |
 |----------|----------------|---------|
-| Jailbreak | **74.9%** | DAN mode, persona exploits, restriction bypass |
-| Prompt Injection | 32.7% | Instruction override, context manipulation |
-| False Positives | 2.0% | Benign prompts incorrectly blocked |
+| Jailbreak | **79.1%** (349/441) | DAN mode, persona exploits, restriction bypass |
+| Prompt Injection | 37.9% (178/470) | Instruction override, context manipulation |
+| False Positives | 4.7% (43/917) | Benign prompts incorrectly blocked |
 
 ## Benchmark Dataset
 
@@ -61,15 +72,14 @@ uv pip install -e .
 ### Run Against Your Deployment
 
 ```bash
-# Using canonical baseline (recommended for comparisons)
+# ALWAYS use canonical baseline for official comparisons
 pibench run https://your-proxy.app -d data/baseline_v2.jsonl
-
-# Quick test with limited samples
-pibench run https://your-proxy.app --max-samples 100
 
 # Save results
 pibench run https://your-proxy.app -d data/baseline_v2.jsonl -o results.json
 ```
+
+> **Note:** Do not use `--max-samples` for benchmarks you intend to compare. Quick smoke tests are fine, but never compare results from sampled runs against the baseline.
 
 ### Run Against Local Instance
 
@@ -142,8 +152,11 @@ Expected impact:
 
 | Version | Balanced Score | TPR | TNR | Notes |
 |---------|----------------|-----|-----|-------|
+| v0.2.47 | 76.50% | 57.69% | 95.31% | Signatures v1.5.7, prompt-classifier-v3 |
 | v0.2.42 | 75.81% | 53.65% | 97.97% | Hyperscan SOM_LEFTMOST fix |
-| v0.2.38 | 76.10% | 54.26% | 97.93% | Baseline (different dataset) |
+| v0.2.38 | 76.10% | 54.26% | 97.93% | Baseline |
+
+**Important:** All benchmarks must use `data/baseline_v2.jsonl` (1834 samples) for reproducible comparisons. Do not use `--max-samples` for official results.
 
 ## Detection Limitations
 
