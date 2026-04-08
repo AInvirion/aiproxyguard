@@ -102,6 +102,47 @@ class TestPythonReScanner:
         assert match.matched_text == text[match.start : match.end]
 
 
+class TestUnicodePatterns:
+    """Tests for Unicode character class patterns (critical for Hyperscan UTF8 mode)."""
+
+    @pytest.fixture
+    def unicode_signatures(self) -> SignatureSet:
+        """Signatures with Unicode character class (explicit enumeration for Hyperscan compatibility)."""
+        # Hyperscan with UTF8 mode doesn't support Unicode ranges like [Ⓐ-ⓩ]
+        # Must enumerate characters explicitly for cross-engine compatibility
+        circled_letters = "ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ"
+        return SignatureSet(signatures=[
+            Signature(
+                id="UE-001",
+                name="Circled letter injection",
+                category="unicode-evasion",
+                severity="high",
+                patterns=[f"[{circled_letters}]+"],
+                action="block",
+            ),
+        ])
+
+    def test_unicode_pattern_matches_circled_letters(self, unicode_signatures: SignatureSet) -> None:
+        """Unicode pattern should match actual circled letters."""
+        scanner = RegexScanner(unicode_signatures)
+        results = scanner.scan("Hello Ⓗⓔⓛⓛⓞ world")
+        assert len(results) == 1
+        assert results[0].signature.id == "UE-001"
+
+    def test_unicode_pattern_does_not_match_plain_text(self, unicode_signatures: SignatureSet) -> None:
+        """Unicode pattern should NOT match plain ASCII text (regression test for missing UTF8 flag)."""
+        scanner = RegexScanner(unicode_signatures)
+        # This was incorrectly matching with Hyperscan without HS_FLAG_UTF8
+        results = scanner.scan("mi querido amigo")
+        assert len(results) == 0, "Plain Spanish text should not match circled letter pattern"
+
+    def test_unicode_pattern_does_not_match_accented_spanish(self, unicode_signatures: SignatureSet) -> None:
+        """Unicode pattern should NOT match accented Spanish characters."""
+        scanner = RegexScanner(unicode_signatures)
+        results = scanner.scan("¿Cómo estás? Muy bien, gracias")
+        assert len(results) == 0, "Accented Spanish text should not match circled letter pattern"
+
+
 class TestEngineDetection:
     def test_get_regex_engine_returns_valid_engine(self) -> None:
         engine = get_regex_engine()

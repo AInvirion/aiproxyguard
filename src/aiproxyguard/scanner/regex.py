@@ -120,9 +120,11 @@ class HyperscanScanner(BaseRegexScanner):
                 # Encode pattern and add to compilation list
                 expressions.append(pattern.encode("utf-8"))
                 ids.append(idx)
-                # HS_FLAG_CASELESS only - SOM_LEFTMOST removed to allow larger patterns
-                # Trade-off: We only get match end position, not start
-                flags.append(hyperscan.HS_FLAG_CASELESS)
+                # HS_FLAG_CASELESS + HS_FLAG_UTF8 for proper Unicode support
+                # UTF8 flag is critical for patterns with Unicode character classes
+                # (e.g., [Ⓐ-ⓩ] for circled letters) to work correctly
+                # Without it, ranges are interpreted as raw byte ranges, causing false positives
+                flags.append(hyperscan.HS_FLAG_CASELESS | hyperscan.HS_FLAG_UTF8)
             except Exception as e:
                 logger.warning(f"Failed to prepare pattern {pattern!r}: {e}")
 
