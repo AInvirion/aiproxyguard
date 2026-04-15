@@ -26,6 +26,36 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Detects Unicode character class ranges that are unsafe for Hyperscan.
+# Hyperscan operates in byte-level mode by default, so Unicode ranges like
+# [Ⓐ-ⓩ] or [\u24b6-\u24e9] are miscompiled and produce false positives on
+# non-English text (e.g. Spanish ¡/¿, accented Latin, CJK characters).
+#
+# This pattern matches character classes containing:
+# 1. Literal non-ASCII char adjacent to `-` (e.g., [Ⓐ-ⓩ])
+# 2. Unicode escape sequences adjacent to `-` (e.g., [\u24b6-\u24e9])
+#
+# The pattern handles escaped characters inside classes (e.g., [\]Ⓐ-ⓩ]).
+_UNICODE_ESCAPE = r"\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}|\\x[0-9a-fA-F]{2}"
+_NON_ASCII_LITERAL = r"[^\x00-\x7f]"
+_UNICODE_CHAR = rf"(?:{_UNICODE_ESCAPE}|{_NON_ASCII_LITERAL})"
+_CLASS_CONTENT = r"(?:[^\]\\]|\\.)*"  # Match class content, handling escapes
+_UNICODE_RANGE_IN_CLASS_RE = re.compile(
+    rf"\[{_CLASS_CONTENT}(?:{_UNICODE_CHAR}-|-{_UNICODE_CHAR}){_CLASS_CONTENT}\]"
+)
+
+
+def _needs_unicode_fallback(pattern: str) -> bool:
+    """Return True if pattern contains a Unicode character class range unsafe for Hyperscan.
+
+    Patterns like ``[Ⓐ-ⓩ]`` or ``[\\u24b6-\\u24e9]`` are miscompiled by
+    Hyperscan operating in byte-level mode, causing false positives on
+    benign non-English text. Such patterns are routed to Python ``re``
+    (Unicode-aware) instead.
+    """
+    return bool(_UNICODE_RANGE_IN_CLASS_RE.search(pattern))
+
+
 # Detect available regex engine with fallback chain:
 # 1. Hyperscan (x86_64, ~100x faster)
 # 2. google-re2 (ARM64 or when hyperscan unavailable)
@@ -98,6 +128,14 @@ class HyperscanScanner(BaseRegexScanner):
         self._pattern_map: list[tuple[str, Signature]] = []
         # Thread-local storage for scratch spaces to avoid HS_SCRATCH_IN_USE (-10) errors
         self._scratch_local = threading.local()
+        # Patterns with Unicode character class ranges are compiled here with
+        # Python re (Unicode-aware) instead of Hyperscan to avoid false positives
+        # caused by Hyperscan's byte-level range miscompilation (see issue #53).
+        self._unicode_fallback: list[tuple[re.Pattern[str], str, Signature]] = []
+        # Lock to protect _db, _pattern_map, and _unicode_fallback during reload.
+        # scan() runs in thread pool workers while reload() is called from the
+        # event loop, so we need synchronization to avoid corrupted state.
+        self._lock = threading.RLock()
         self._compile_database()
 
     def _compile_database(self) -> None:
@@ -108,39 +146,54 @@ class HyperscanScanner(BaseRegexScanner):
         if not patterns:
             self._db = None
             self._pattern_map = []
+            self._unicode_fallback = []
             return
 
-        self._pattern_map = patterns
+        self._pattern_map = []
+        self._unicode_fallback = []
         expressions: list[bytes] = []
         ids: list[int] = []
         flags: list[int] = []
 
-        for idx, (pattern, _sig) in enumerate(patterns):
+        for pattern, sig in patterns:
+            if _needs_unicode_fallback(pattern):
+                # Route to Python re to avoid Hyperscan byte-level miscompilation
+                try:
+                    compiled = re.compile(pattern, re.IGNORECASE | re.UNICODE)
+                    self._unicode_fallback.append((compiled, pattern, sig))
+                    logger.debug(f"Pattern {pattern!r} routed to Unicode fallback (Hyperscan unsafe)")
+                except re.error as e:
+                    logger.warning(f"Failed to compile fallback pattern {pattern!r}: {e}")
+                continue
+
             try:
                 # Encode pattern and add to compilation list
                 expressions.append(pattern.encode("utf-8"))
-                ids.append(idx)
+                ids.append(len(self._pattern_map))
                 # HS_FLAG_CASELESS only - SOM_LEFTMOST removed to allow larger patterns
                 # Trade-off: We only get match end position, not start
                 flags.append(hyperscan.HS_FLAG_CASELESS)
+                self._pattern_map.append((pattern, sig))
             except Exception as e:
                 logger.warning(f"Failed to prepare pattern {pattern!r}: {e}")
 
         if not expressions:
             self._db = None
-            return
-
-        try:
-            self._db = hyperscan.Database()
-            self._db.compile(
-                expressions=expressions,
-                ids=ids,
-                flags=flags,
-            )
-            logger.debug(f"Compiled {len(expressions)} patterns into Hyperscan database")
-        except hyperscan.error as e:
-            logger.error(f"Failed to compile Hyperscan database: {e}")
-            self._db = None
+        else:
+            try:
+                self._db = hyperscan.Database()
+                self._db.compile(
+                    expressions=expressions,
+                    ids=ids,
+                    flags=flags,
+                )
+                logger.debug(
+                    f"Compiled {len(expressions)} patterns into Hyperscan database, "
+                    f"{len(self._unicode_fallback)} patterns using Unicode fallback"
+                )
+            except hyperscan.error as e:
+                logger.error(f"Failed to compile Hyperscan database: {e}")
+                self._db = None
 
     def _get_scratch(self) -> "hyperscan.Scratch | None":  # type: ignore[name-defined]
         """Get or create a thread-local scratch space for the current database."""
@@ -167,58 +220,76 @@ class HyperscanScanner(BaseRegexScanner):
         return scratch
 
     def scan(self, text: str) -> list[ScanMatch]:
-        """Scan text using Hyperscan batch matching."""
+        """Scan text using Hyperscan batch matching plus Unicode-safe fallback."""
         import hyperscan
 
-        if self._db is None or not self._pattern_map:
-            return []
-
-        scratch = self._get_scratch()
-        if scratch is None:
-            return []
-
         matches: list[ScanMatch] = []
-        text_bytes = text.encode("utf-8")
 
-        def on_match(
-            pattern_id: int,
-            start: int,
-            end: int,
-            flags: int,
-            context: list[ScanMatch],
-        ) -> None:
-            """Callback for each Hyperscan match.
+        # Take a snapshot of the current state under lock to avoid races with reload()
+        with self._lock:
+            db = self._db
+            pattern_map = self._pattern_map
+            unicode_fallback = self._unicode_fallback
 
-            Note: Without SOM_LEFTMOST, start is always 0 (scan offset).
-            We estimate matched text by taking up to 100 chars before end.
-            """
-            if pattern_id < len(self._pattern_map):
-                pattern, signature = self._pattern_map[pattern_id]
-                # Estimate start since SOM_LEFTMOST is disabled
-                estimated_start = max(0, end - 100)
-                matched_text = text_bytes[estimated_start:end].decode("utf-8", errors="replace")
-                context.append(
+        # --- Hyperscan scan (byte-level, safe patterns only) ---
+        if db is not None and pattern_map:
+            scratch = self._get_scratch()
+            if scratch is not None:
+                text_bytes = text.encode("utf-8")
+
+                def on_match(
+                    pattern_id: int,
+                    start: int,
+                    end: int,
+                    flags: int,
+                    context: list[ScanMatch],
+                ) -> None:
+                    """Callback for each Hyperscan match.
+
+                    Note: Without SOM_LEFTMOST, start is always 0 (scan offset).
+                    We estimate matched text by taking up to 100 chars before end.
+                    """
+                    if pattern_id < len(pattern_map):
+                        pattern, signature = pattern_map[pattern_id]
+                        # Estimate start since SOM_LEFTMOST is disabled
+                        estimated_start = max(0, end - 100)
+                        matched_text = text_bytes[estimated_start:end].decode("utf-8", errors="replace")
+                        context.append(
+                            ScanMatch(
+                                signature=signature,
+                                matched_pattern=pattern,
+                                matched_text=matched_text,
+                                start=estimated_start,
+                                end=end,
+                            )
+                        )
+
+                try:
+                    # Use thread-local scratch to avoid HS_SCRATCH_IN_USE errors
+                    db.scan(text_bytes, on_match, scratch=scratch, context=matches)
+                except hyperscan.error as e:
+                    logger.error(f"Hyperscan scan error: {e}")
+
+        # --- Unicode fallback scan (Python re, codepoint-aware) ---
+        for compiled, pattern, signature in unicode_fallback:
+            for match in compiled.finditer(text):
+                matches.append(
                     ScanMatch(
                         signature=signature,
                         matched_pattern=pattern,
-                        matched_text=matched_text,
-                        start=estimated_start,
-                        end=end,
+                        matched_text=match.group(),
+                        start=match.start(),
+                        end=match.end(),
                     )
                 )
-
-        try:
-            # Use thread-local scratch to avoid HS_SCRATCH_IN_USE errors
-            self._db.scan(text_bytes, on_match, scratch=scratch, context=matches)
-        except hyperscan.error as e:
-            logger.error(f"Hyperscan scan error: {e}")
 
         return matches
 
     def reload(self, signatures: SignatureSet) -> None:
         """Recompile database with new signatures."""
         self._signatures = signatures
-        self._compile_database()
+        with self._lock:
+            self._compile_database()
 
 
 class Re2Scanner(BaseRegexScanner):
