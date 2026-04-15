@@ -26,21 +26,32 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Matches a character class containing a Unicode character range, e.g. [Ⓐ-ⓩ].
-# Hyperscan operates in byte-level mode by default, so these ranges are
-# miscompiled and produce false positives on non-English text (e.g. Spanish
-# ¡/¿, accented Latin, CJK characters).
+# Detects Unicode character class ranges that are unsafe for Hyperscan.
+# Hyperscan operates in byte-level mode by default, so Unicode ranges like
+# [Ⓐ-ⓩ] or [\u24b6-\u24e9] are miscompiled and produce false positives on
+# non-English text (e.g. Spanish ¡/¿, accented Latin, CJK characters).
+#
+# This pattern matches character classes containing:
+# 1. Literal non-ASCII char adjacent to `-` (e.g., [Ⓐ-ⓩ])
+# 2. Unicode escape sequences adjacent to `-` (e.g., [\u24b6-\u24e9])
+#
+# The pattern handles escaped characters inside classes (e.g., [\]Ⓐ-ⓩ]).
+_UNICODE_ESCAPE = r"\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}|\\x[0-9a-fA-F]{2}"
+_NON_ASCII_LITERAL = r"[^\x00-\x7f]"
+_UNICODE_CHAR = rf"(?:{_UNICODE_ESCAPE}|{_NON_ASCII_LITERAL})"
+_CLASS_CONTENT = r"(?:[^\]\\]|\\.)*"  # Match class content, handling escapes
 _UNICODE_RANGE_IN_CLASS_RE = re.compile(
-    r"\[[^\]]*(?:[^\x00-\x7f]-|-[^\x00-\x7f])[^\]]*\]"
+    rf"\[{_CLASS_CONTENT}(?:{_UNICODE_CHAR}-|-{_UNICODE_CHAR}){_CLASS_CONTENT}\]"
 )
 
 
 def _needs_unicode_fallback(pattern: str) -> bool:
     """Return True if pattern contains a Unicode character class range unsafe for Hyperscan.
 
-    Patterns like ``[Ⓐ-ⓩ]`` are miscompiled by Hyperscan operating in
-    byte-level mode, causing false positives on benign non-English text.
-    Such patterns are routed to Python ``re`` (Unicode-aware) instead.
+    Patterns like ``[Ⓐ-ⓩ]`` or ``[\\u24b6-\\u24e9]`` are miscompiled by
+    Hyperscan operating in byte-level mode, causing false positives on
+    benign non-English text. Such patterns are routed to Python ``re``
+    (Unicode-aware) instead.
     """
     return bool(_UNICODE_RANGE_IN_CLASS_RE.search(pattern))
 
@@ -121,6 +132,10 @@ class HyperscanScanner(BaseRegexScanner):
         # Python re (Unicode-aware) instead of Hyperscan to avoid false positives
         # caused by Hyperscan's byte-level range miscompilation (see issue #53).
         self._unicode_fallback: list[tuple[re.Pattern[str], str, Signature]] = []
+        # Lock to protect _db, _pattern_map, and _unicode_fallback during reload.
+        # scan() runs in thread pool workers while reload() is called from the
+        # event loop, so we need synchronization to avoid corrupted state.
+        self._lock = threading.RLock()
         self._compile_database()
 
     def _compile_database(self) -> None:
@@ -210,8 +225,14 @@ class HyperscanScanner(BaseRegexScanner):
 
         matches: list[ScanMatch] = []
 
+        # Take a snapshot of the current state under lock to avoid races with reload()
+        with self._lock:
+            db = self._db
+            pattern_map = self._pattern_map
+            unicode_fallback = self._unicode_fallback
+
         # --- Hyperscan scan (byte-level, safe patterns only) ---
-        if self._db is not None and self._pattern_map:
+        if db is not None and pattern_map:
             scratch = self._get_scratch()
             if scratch is not None:
                 text_bytes = text.encode("utf-8")
@@ -228,8 +249,8 @@ class HyperscanScanner(BaseRegexScanner):
                     Note: Without SOM_LEFTMOST, start is always 0 (scan offset).
                     We estimate matched text by taking up to 100 chars before end.
                     """
-                    if pattern_id < len(self._pattern_map):
-                        pattern, signature = self._pattern_map[pattern_id]
+                    if pattern_id < len(pattern_map):
+                        pattern, signature = pattern_map[pattern_id]
                         # Estimate start since SOM_LEFTMOST is disabled
                         estimated_start = max(0, end - 100)
                         matched_text = text_bytes[estimated_start:end].decode("utf-8", errors="replace")
@@ -245,12 +266,12 @@ class HyperscanScanner(BaseRegexScanner):
 
                 try:
                     # Use thread-local scratch to avoid HS_SCRATCH_IN_USE errors
-                    self._db.scan(text_bytes, on_match, scratch=scratch, context=matches)
+                    db.scan(text_bytes, on_match, scratch=scratch, context=matches)
                 except hyperscan.error as e:
                     logger.error(f"Hyperscan scan error: {e}")
 
         # --- Unicode fallback scan (Python re, codepoint-aware) ---
-        for compiled, pattern, signature in self._unicode_fallback:
+        for compiled, pattern, signature in unicode_fallback:
             for match in compiled.finditer(text):
                 matches.append(
                     ScanMatch(
@@ -267,7 +288,8 @@ class HyperscanScanner(BaseRegexScanner):
     def reload(self, signatures: SignatureSet) -> None:
         """Recompile database with new signatures."""
         self._signatures = signatures
-        self._compile_database()
+        with self._lock:
+            self._compile_database()
 
 
 class Re2Scanner(BaseRegexScanner):

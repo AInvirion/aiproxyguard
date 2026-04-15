@@ -144,6 +144,40 @@ class TestNeedsUnicodeFallback:
     def test_greek_class_no_range_not_flagged(self) -> None:
         assert _needs_unicode_fallback("(?i)[a-z]+[αεορ]+[a-z]+") is False
 
+    # --- Tests for escaped Unicode sequences (production signature format) ---
+
+    def test_escaped_unicode_circled_range(self) -> None:
+        # Production format from rules.yaml: UE-001
+        assert _needs_unicode_fallback(r"[\u24b6-\u24e9\u2460-\u2473\u24ea-\u24ff]+") is True
+
+    def test_escaped_unicode_fullwidth_range(self) -> None:
+        # Production format from rules.yaml: UE-002
+        assert _needs_unicode_fallback(r"[\uff01-\uff5e]{4,}") is True
+
+    def test_escaped_unicode_single_range(self) -> None:
+        assert _needs_unicode_fallback(r"[\u0100-\u017f]+") is True
+
+    def test_escaped_unicode_hex_x_range(self) -> None:
+        # \xXX format
+        assert _needs_unicode_fallback(r"[\x80-\xff]+") is True
+
+    def test_escaped_unicode_capital_U_range(self) -> None:
+        # \UXXXXXXXX format for astral plane
+        assert _needs_unicode_fallback(r"[\U0001F600-\U0001F64F]+") is True
+
+    # --- Tests for escaped brackets inside character classes ---
+
+    def test_escaped_bracket_before_unicode_range(self) -> None:
+        # Pattern with escaped ] before Unicode range - must still be detected
+        assert _needs_unicode_fallback(r"[\]Ⓐ-ⓩ]+") is True
+
+    def test_escaped_bracket_with_escaped_unicode_range(self) -> None:
+        assert _needs_unicode_fallback(r"[\]\u24b6-\u24e9]+") is True
+
+    def test_multiple_escapes_in_class(self) -> None:
+        # Complex pattern with multiple escape sequences
+        assert _needs_unicode_fallback(r"[a-z\]\[Ⓐ-ⓩ\\]+") is True
+
 
 @pytest.fixture
 def unicode_range_signatures() -> SignatureSet:

@@ -44,7 +44,7 @@ jobs:
 
       - name: Trigger CLA recheck
         if: steps.add-contributor.outputs.already_signed == 'false'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           CONTRIBUTOR: ${{ github.event.comment.user.login }}
         with:
