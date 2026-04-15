@@ -36,7 +36,8 @@ WORKDIR /app
 
 # Install CA certificates, locales, and regex engine runtime libs
 # Use apt-cache to find available package versions dynamically
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Upgrade all packages first to pick up security patches (CVE-2026-28388, etc)
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     ca-certificates \
     locales \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
