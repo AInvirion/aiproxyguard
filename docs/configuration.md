@@ -256,7 +256,7 @@ control_plane:
 
 API keys are **free** to create:
 
-1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
+1. [Sign up free](https://aiproxyguard.com/register) at aiproxyguard.com
 2. Navigate to **Settings** → **API Keys**
 3. Click **Create API Key**
 4. Enable the `fleet` scope for control plane features (signature sync, telemetry)

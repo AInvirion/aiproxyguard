@@ -18,4 +18,4 @@ Official client libraries for AIProxyGuard. Both SDKs work with the self-hosted 
 Both options are **free**:
 
 - **Self-hosted proxy**: Deploy your own proxy and point your existing OpenAI/Anthropic SDK at it. No API key required. Use our SDKs for direct `/check` calls or advanced features.
-- **Cloud API**: Use our SDKs with a free API key at `aiproxyguard.com` - no proxy deployment needed. When creating your API key, enable the `check` scope in permissions.
+- **Cloud API**: [**Sign up free**](https://aiproxyguard.com/register) for an API key and use our SDKs — no proxy deployment needed. When creating your API key, enable the `check` scope in permissions.

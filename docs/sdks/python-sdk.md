@@ -64,7 +64,7 @@ client = AIProxyGuard(
 
 API keys are **free**. To use the cloud API:
 
-1. Sign up at [aiproxyguard.com](https://aiproxyguard.com)
+1. [Sign up free](https://aiproxyguard.com/register) at aiproxyguard.com
 2. Go to **Settings** → **API Keys** → **Create API Key**
 3. **Enable the `check` scope** in permissions
 4. Copy your key (starts with `apg_`)
