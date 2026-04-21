@@ -5,7 +5,7 @@ nav_order: 2
 
 # Getting Started
 
-> **Prefer not to self-host?** Skip proxy deployment entirely - use the [Cloud API](https://aiproxyguard.com) with our [SDKs](sdks/) for instant protection. API keys are free - just enable the `check` scope when creating your key.
+> **Prefer not to self-host?** Skip proxy deployment entirely — [**create a free account**](https://aiproxyguard.com/register) for a hosted API key and use our [SDKs](sdks/) for instant protection. API keys are free — just enable the `check` scope when creating your key.
 
 ## Installation
 
@@ -26,7 +26,7 @@ docker run -d -p 8080:8080 \
 
 > **Alternative:** Also available on Docker Hub as `ainvirion/aiproxyguard`
 
-> **Note:** The Docker image includes basic detection rules out of the box. For continuously updated signatures and advanced threat detection, connect to the [Cloud control plane](https://aiproxyguard.com) or use the Cloud API directly.
+> **Note:** The Docker image includes basic detection rules out of the box. For continuously updated signatures, curated community rules, and advanced threat detection, [**sign up free**](https://aiproxyguard.com/register) to connect to the control plane, or use the Cloud API directly.
 
 The default config enables:
 - OpenAI and Anthropic upstreams

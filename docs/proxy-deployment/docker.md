@@ -158,7 +158,7 @@ If you see this error:
 API key invalid or revoked. Control plane features disabled.
 ```
 
-1. Get a new API key from [aiproxyguard.com](https://aiproxyguard.com)
+1. Get a new API key from [aiproxyguard.com](https://aiproxyguard.com/register)
 2. Update the `AIPROXYGUARD_CONTROL_PLANE_API_KEY` environment variable
 3. Restart: `docker restart aiproxyguard`
 

@@ -11,7 +11,7 @@ LLM Security Proxy with Prompt Injection Detection.
 
 AIProxyGuard is a security proxy that sits between your application and LLM providers (OpenAI, Anthropic, etc.) to detect and block prompt injection attacks, jailbreak attempts, and other malicious inputs before they reach the model.
 
-> You can use the [Cloud API](https://aiproxyguard.com) directly with our [SDKs](sdks/) - no infrastructure to deploy or manage.
+> **Prefer not to self-host?** [**Sign up free at aiproxyguard.com**](https://aiproxyguard.com/register) for a hosted API key and use our [SDKs](sdks/) — no infrastructure to deploy or manage. Free tier includes curated community rules and automatic signature updates.
 
 ![AIProxyGuard Architecture](https://ainvirion.github.io/aiproxyguard/diagram.png)
 
