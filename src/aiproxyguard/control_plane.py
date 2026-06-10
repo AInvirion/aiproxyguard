@@ -168,9 +168,11 @@ class ControlPlaneClient:
         config: ControlPlaneConfig,
         version: str = "0.1.0",
         manifest_verifier: ManifestVerifier | None = None,
+        deployment_mode: str = "http",
     ):
         self.config = config
         self.version = version
+        self.deployment_mode = deployment_mode  # "http" or "tls"
         self.instance_id = _get_instance_id()
         self.fingerprint = _get_fingerprint()
         self._client: httpx.AsyncClient | None = None
@@ -353,6 +355,7 @@ class ControlPlaneClient:
                         "os": platform.system(),
                         "arch": platform.machine(),
                         "python": platform.python_version(),
+                        "mode": self.deployment_mode,
                     },
                 },
             )
@@ -417,6 +420,7 @@ class ControlPlaneClient:
                     "metadata": {
                         "os": platform.system(),
                         "arch": platform.machine(),
+                        "mode": self.deployment_mode,
                     },
                 },
             )
@@ -1291,7 +1295,11 @@ def get_client() -> ControlPlaneClient | None:
     return _client
 
 
-def init_client(config: ControlPlaneConfig, version: str = "0.1.0") -> ControlPlaneClient:
+def init_client(
+    config: ControlPlaneConfig,
+    version: str = "0.1.0",
+    deployment_mode: str = "http",
+) -> ControlPlaneClient:
     """Initialize the global control plane client."""
     global _client
     # Initialize verifier with public key from config if provided
@@ -1300,5 +1308,7 @@ def init_client(config: ControlPlaneConfig, version: str = "0.1.0") -> ControlPl
         from aiproxyguard.signatures.verifier import ManifestVerifier
 
         verifier = ManifestVerifier(config.manifest_public_key)
-    _client = ControlPlaneClient(config, version, manifest_verifier=verifier)
+    _client = ControlPlaneClient(
+        config, version, manifest_verifier=verifier, deployment_mode=deployment_mode
+    )
     return _client
