@@ -323,3 +323,43 @@ class TestFailureModes:
 
         assert result.status == 200
         assert len(session.calls) == 1
+
+
+class TestResponseScanTimeout:
+    """Response-scan timeout must fail open regardless of failure_mode.
+
+    A timeout is not a detection, and the upstream response already succeeded
+    (and was billed) -- a slow secondary scan must never convert it into a 502.
+    """
+
+    def _pipeline_with_slow_response_scanner(self, failure_mode: str):
+        config = MockConfig(security=MockSecurityConfig(failure_mode=failure_mode))
+        config.security.scanner_timeout_ms = 10
+        pipeline, session = make_pipeline(config=config)
+
+        rscanner = MagicMock()
+        rscanner.enabled = True
+
+        def slow(text: str):
+            # Longer than scanner_timeout_ms (10ms) so wait_for fires, but short
+            # enough that the uncancellable worker thread doesn't hang teardown.
+            import time as _t
+            _t.sleep(0.2)
+            return SimpleNamespace(blocked=False, has_detections=False,
+                                   category=None, signature_id=None, details={})
+
+        rscanner.scan = slow
+        pipeline._scanner.response_scanner = rscanner
+        return pipeline, session
+
+    async def test_response_timeout_open_passes_through(self) -> None:
+        pipeline, session = self._pipeline_with_slow_response_scanner("open")
+        result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+        assert result.status == 200
+
+    async def test_response_timeout_closed_still_passes_through(self) -> None:
+        # The behavior that changed: closed mode must NOT block on a response
+        # scan timeout (it still blocks on a genuine response detection).
+        pipeline, session = self._pipeline_with_slow_response_scanner("closed")
+        result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+        assert result.status == 200
