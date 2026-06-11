@@ -30,13 +30,13 @@ from aiproxyguard import __version__
 from aiproxyguard.signatures.models import SignatureSet
 from aiproxyguard.router import Router
 from aiproxyguard.identity import IdentityResolver
+from aiproxyguard.pipeline import PipelineRequest, RequestPipeline, UpstreamTarget
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.signatures.loader import load_signatures, get_signature_version
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.logging import get_logger, update_logging
 from aiproxyguard.control_plane import init_client, get_client
-from aiproxyguard.tokens import count_tokens
 
 logger = get_logger("server")
 
@@ -44,6 +44,13 @@ logger = get_logger("server")
 async def on_startup(app: web.Application) -> None:
     """Create shared HTTP session and start control plane client."""
     app["http_session"] = aiohttp.ClientSession()
+    app["pipeline"] = RequestPipeline(
+        config=app["config"],
+        scanner=app["scanner"],
+        policy=app["policy"],
+        metrics=app["metrics"],
+        session_getter=lambda: app["http_session"],
+    )
 
     # Start control plane client
     cp_client = get_client()
@@ -274,16 +281,13 @@ async def check_handler(request: web.Request) -> web.Response:
 
 
 async def proxy_handler(request: web.Request) -> web.Response:
-    """Main proxy handler."""
+    """Main proxy handler: resolve route and identity, then run the shared pipeline."""
     app = request.app
     config: Config = app["config"]
     router: Router = app["router"]
-    scanner: ScannerPipeline = app["scanner"]
-    policy: PolicyEngine = app["policy"]
     identity: IdentityResolver = app["identity"]
-    metrics: MetricsCollector = app["metrics"]
+    pipeline: RequestPipeline = app["pipeline"]
 
-    start_time = time.monotonic()
     path = request.path_qs
 
     # Route request
@@ -313,298 +317,25 @@ async def proxy_handler(request: web.Request) -> web.Response:
             status=413,
         )
 
-    # Scan request (if enabled and has body)
-    if config.scanner.enabled and body:
-        scan_start = time.monotonic()
-        try:
-            text = body.decode("utf-8")
-            # Run CPU-bound scanning in thread pool with timeout
-            timeout_s = config.security.scanner_timeout_ms / 1000.0
-            scan_result = await asyncio.wait_for(
-                scanner.scan_async(text),
-                timeout=timeout_s,
-            )
-            scan_duration = time.monotonic() - scan_start
-            metrics.record_scan("pipeline", scan_result.action, scan_duration)
-
-            # Apply policy
-            final_action = policy.resolve(client_id, scan_result)
-
-            if final_action == "block":
-                metrics.record_detection(
-                    scan_result.category or "unknown",
-                    "block",
-                    scan_result.signature_id,
-                )
-                # Log details server-side only (never expose to clients)
-                logger.warning(
-                    "Request blocked",
-                    extra={
-                        "category": scan_result.category,
-                        "signature_id": scan_result.signature_id,
-                        "client_id": client_id,
-                        "internal_details": scan_result.details,  # For debugging only
-                    },
-                )
-                # Extract model and count tokens for telemetry
-                model = None
-                input_tokens = None
-                try:
-                    import json
-                    body_json = json.loads(text)
-                    if isinstance(body_json, dict):
-                        model = body_json.get("model")
-                        if model is not None:
-                            model = str(model)[:100]  # Truncate to 100 chars
-                    input_tokens = count_tokens(text, model)
-                except Exception:
-                    pass  # Best effort - don't fail the block
-                # Report to control plane
-                cp_client = get_client()
-                if cp_client:
-                    asyncio.create_task(cp_client.report_detection(
-                        event_type="block",
-                        category=scan_result.category or "unknown",
-                        signature_id=scan_result.signature_id,
-                        latency_ms=int(scan_duration * 1000),
-                        provider=route.provider,
-                        endpoint=path,
-                        model=model,
-                        input_tokens=input_tokens,
-                    ))
-                # Return generic message - never expose signature patterns
-                return web.json_response({
-                    "error": {
-                        "type": "content_blocked",
-                        "code": f"{scan_result.category}_detected",
-                        "message": "Request blocked: policy violation detected",
-                        "category": scan_result.category,
-                    }
-                }, status=400)
-
-            if final_action in ("warn", "log"):
-                metrics.record_detection(
-                    scan_result.category or "unknown",
-                    final_action,
-                    scan_result.signature_id,
-                )
-                # Report to control plane
-                cp_client = get_client()
-                if cp_client:
-                    asyncio.create_task(cp_client.report_detection(
-                        event_type=final_action,
-                        category=scan_result.category or "unknown",
-                        signature_id=scan_result.signature_id,
-                        latency_ms=int(scan_duration * 1000),
-                        provider=route.provider,
-                        endpoint=path,
-                    ))
-                logger.warning(
-                    "Detection",
-                    extra={
-                        "action": final_action,
-                        "category": scan_result.category,
-                        "client_id": client_id,
-                        "signature_id": scan_result.signature_id,
-                    },
-                )
-        except asyncio.TimeoutError:
-            # Scanner timed out - use failure mode
-            scan_duration = time.monotonic() - scan_start
-            metrics.record_scan("pipeline", "timeout", scan_duration)
-            logger.warning(
-                "Scanner timeout",
-                extra={"timeout_ms": config.security.scanner_timeout_ms},
-            )
-            if config.security.failure_mode == "closed":
-                return web.json_response(
-                    {"error": {"type": "scanner_timeout", "message": "Scanner timed out"}},
-                    status=503,
-                )
-        except Exception as e:
-            # Scanner error - use failure mode
-            if config.security.failure_mode == "closed":
-                return web.json_response(
-                    {"error": {"type": "scanner_error", "message": "Scanner unavailable"}},
-                    status=503,
-                )
-            logger.error(f"Scanner error: {e}")
-
-    # Forward to upstream
-    try:
-        session: aiohttp.ClientSession = app["http_session"]
-        # Build headers (copy relevant headers)
-        headers = {}
-        # Forward standard and vendor-specific headers required by LLM providers
-        allowed_headers = (
-            # Standard headers
-            "content-type", "accept", "accept-encoding", "accept-language",
-            # OpenAI headers
-            "openai-organization", "openai-project", "openai-beta",
-            # Anthropic headers
-            "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
-            # OpenRouter headers
-            "x-title", "http-referer",
-            # Common request IDs
-            "x-request-id", "x-correlation-id",
-        )
-        for key in allowed_headers:
-            if key in request.headers:
-                headers[key] = request.headers[key]
-
-        # Forward auth header based on route config, with fallbacks
-        auth_headers_to_check = ["authorization", "api-key", "x-api-key"]
-        if route.auth_header:
-            # Prioritize the configured auth header
-            auth_headers_to_check = [route.auth_header.lower()] + [
-                h for h in auth_headers_to_check if h != route.auth_header.lower()
-            ]
-        for key in auth_headers_to_check:
-            if key in request.headers:
-                headers[key] = request.headers[key]
-                break  # Only forward one auth header
-
-        async with session.request(
-            method=request.method,
+    result = await pipeline.process(PipelineRequest(
+        method=request.method,
+        path=path,
+        headers={k.lower(): v for k, v in request.headers.items()},
+        body=body,
+        client_id=client_id,
+        target=UpstreamTarget(
+            provider=route.provider,
             url=route.upstream_url,
-            headers=headers,
-            data=body,
-            timeout=aiohttp.ClientTimeout(total=route.timeout),
-        ) as resp:
-            # Check response size limit before reading
-            upstream_content_length = resp.content_length
-            if upstream_content_length is not None and upstream_content_length > config.security.max_response_size:
-                logger.warning(
-                    "Response too large",
-                    extra={"content_length": upstream_content_length, "limit": config.security.max_response_size},
-                )
-                return web.json_response(
-                    {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
-                    status=502,
-                )
+            auth_header=route.auth_header,
+            timeout=route.timeout,
+        ),
+    ))
 
-            response_body = await resp.read()
-
-            # Also check actual size in case Content-Length was missing/wrong
-            if len(response_body) > config.security.max_response_size:
-                logger.warning(
-                    "Response too large (after read)",
-                    extra={"size": len(response_body), "limit": config.security.max_response_size},
-                )
-                return web.json_response(
-                    {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
-                    status=502,
-                )
-
-            duration = time.monotonic() - start_time
-            metrics.record_request(route.provider, request.method, resp.status, duration)
-
-            # Build response headers, forwarding relevant upstream headers
-            response_headers = {}
-            for header in (
-                "content-type",
-                "x-request-id",
-                "retry-after",
-                "x-ratelimit-limit",
-                "x-ratelimit-remaining",
-                "x-ratelimit-reset",
-            ):
-                if header in resp.headers:
-                    response_headers[header] = resp.headers[header]
-
-            # Response scanning (if enabled)
-            response_scanner = scanner.response_scanner
-            if response_scanner and response_scanner.enabled and response_body:
-                scan_start = time.monotonic()
-                try:
-                    response_text = response_body.decode("utf-8")
-                    # Run CPU-bound scanning in thread pool with timeout
-                    timeout_s = config.security.scanner_timeout_ms / 1000.0
-                    response_scan_result = await asyncio.wait_for(
-                        asyncio.to_thread(response_scanner.scan, response_text),
-                        timeout=timeout_s,
-                    )
-                    scan_duration = time.monotonic() - scan_start
-                    metrics.record_scan("response", "block" if response_scan_result.blocked else "allow", scan_duration)
-
-                    if response_scan_result.has_detections:
-                        # Report detection to control plane
-                        cp_client = get_client()
-                        if cp_client:
-                            asyncio.create_task(cp_client.report_detection(
-                                event_type="response_detection",
-                                category=response_scan_result.category or "unknown",
-                                signature_id=response_scan_result.signature_id,
-                                latency_ms=int(scan_duration * 1000),
-                                provider=route.provider,
-                                endpoint=path,
-                            ))
-
-                        if response_scan_result.blocked:
-                            metrics.record_detection(
-                                response_scan_result.category or "unknown",
-                                "block",
-                                response_scan_result.signature_id,
-                            )
-                            logger.warning(
-                                "Response blocked",
-                                extra={
-                                    "category": response_scan_result.category,
-                                    "signature_id": response_scan_result.signature_id,
-                                    "client_id": client_id,
-                                    "internal_details": response_scan_result.details,
-                                },
-                            )
-                            # Return generic message - never expose signature patterns
-                            return web.json_response({
-                                "error": {
-                                    "type": "response_blocked",
-                                    "code": f"{response_scan_result.category}_detected",
-                                    "message": "Response blocked: sensitive content detected",
-                                    "category": response_scan_result.category,
-                                }
-                            }, status=502)
-                        else:
-                            # Log non-blocking detections
-                            metrics.record_detection(
-                                response_scan_result.category or "unknown",
-                                "warn",
-                                response_scan_result.signature_id,
-                            )
-                            logger.warning(
-                                "Response detection (non-blocking)",
-                                extra={
-                                    "category": response_scan_result.category,
-                                    "signature_id": response_scan_result.signature_id,
-                                    "client_id": client_id,
-                                },
-                            )
-                except asyncio.TimeoutError:
-                    scan_duration = time.monotonic() - scan_start
-                    metrics.record_scan("response", "timeout", scan_duration)
-                    logger.warning(
-                        "Response scanner timeout",
-                        extra={"timeout_ms": config.security.scanner_timeout_ms},
-                    )
-                    # Fail open for response scanning - return the response
-                except Exception as e:
-                    logger.error(f"Response scanner error: {e}")
-                    # In case of scanner error, we still return the response
-                    # (fail open for response scanning by default)
-
-            return web.Response(
-                status=resp.status,
-                body=response_body,
-                headers=response_headers,
-            )
-    except aiohttp.ClientError as e:
-        duration = time.monotonic() - start_time
-        metrics.record_request(route.provider, request.method, 502, duration)
-        logger.error(f"Upstream error: {e}")
-        return web.json_response(
-            {"error": {"type": "upstream_error", "message": str(e)}},
-            status=502,
-        )
+    return web.Response(
+        status=result.status,
+        body=result.body,
+        headers=result.headers,
+    )
 
 
 def create_app(config: Config) -> web.Application:
@@ -647,7 +378,7 @@ def create_app(config: Config) -> web.Application:
 
     # Initialize control plane client
     if config.control_plane.enabled:
-        init_client(config.control_plane, __version__)
+        init_client(config.control_plane, __version__, deployment_mode="http")
 
     # Lifecycle hooks
     app.on_startup.append(on_startup)
@@ -740,7 +471,7 @@ async def _run_tls_server(config: Config) -> None:
     # Initialize control plane client (same as HTTP path)
     cp_client = None
     if config.control_plane.enabled:
-        init_client(config.control_plane, __version__)
+        init_client(config.control_plane, __version__, deployment_mode="tls")
         cp_client = get_client()
 
         if cp_client:

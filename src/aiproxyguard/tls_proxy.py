@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import asyncio
 import ssl
-import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -35,11 +34,28 @@ if TYPE_CHECKING:
 
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
+from aiproxyguard.pipeline import PipelineRequest, RequestPipeline, UpstreamTarget
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.identity import IdentityResolver
 
 logger = get_logger("tls_proxy")
+
+_STATUS_REASONS = {
+    200: "OK",
+    400: "Bad Request",
+    403: "Forbidden",
+    404: "Not Found",
+    413: "Payload Too Large",
+    429: "Too Many Requests",
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+}
+
+
+def _status_reason(status: int) -> str:
+    return _STATUS_REASONS.get(status, "Error")
 
 
 @dataclass
@@ -77,17 +93,47 @@ class TLSInterceptProxy:
         self._identity = identity
         self._metrics = metrics
         self._http_session: aiohttp.ClientSession | None = None
-        # Build allowlist of hosts from configured upstreams
-        self._allowed_hosts: set[str] = self._build_allowed_hosts(config)
+        # Map allowed hostnames to their upstream config (provider name, config)
+        self._host_to_upstream: dict[str, tuple[str, object]] = self._build_host_map(config)
+        self._allowed_hosts: set[str] = set(self._host_to_upstream)
+        self._pipeline = RequestPipeline(
+            config=config,
+            scanner=scanner,
+            policy=policy,
+            metrics=metrics,
+            session_getter=self._get_session,
+        )
 
-    def _build_allowed_hosts(self, config: "Config") -> set[str]:
-        """Extract allowed hostnames from upstream configurations."""
-        allowed = set()
-        for upstream in config.upstreams.values():
+    def _build_host_map(self, config: "Config") -> dict[str, tuple[str, object]]:
+        """Map upstream hostnames to (provider name, upstream config)."""
+        host_map: dict[str, tuple[str, object]] = {}
+        for provider, upstream in config.upstreams.items():
             parsed = urlparse(upstream.url)
             if parsed.hostname:
-                allowed.add(parsed.hostname.lower())
-        return allowed
+                host_map[parsed.hostname.lower()] = (provider, upstream)
+        return host_map
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        if self._http_session is None:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    def _resolve_target(self, host: str, port: int, path: str) -> UpstreamTarget:
+        """Resolve the upstream target, using per-upstream config when the host matches."""
+        provider = host
+        auth_header = None
+        timeout = float(self._config.security.upstream_timeout_s)
+        match = self._host_to_upstream.get(host.lower())
+        if match:
+            provider, upstream = match
+            auth_header = upstream.auth_header
+            timeout = float(upstream.timeout)
+        return UpstreamTarget(
+            provider=provider,
+            url=f"https://{host}:{port}{path}",
+            auth_header=auth_header,
+            timeout=timeout,
+        )
 
     def _is_host_allowed(self, host: str) -> bool:
         """Check if host is in the allowlist of configured upstreams."""
@@ -344,293 +390,31 @@ class TLSInterceptProxy:
         upstream_port: int,
         peername: tuple[str, int] | None,
     ) -> None:
-        """Forward request through scanner and to upstream."""
-        start_time = time.monotonic()
+        """Forward request through the shared pipeline and write the result."""
         client_ip = peername[0] if peername else "unknown"
 
         # Resolve identity
         headers_dict = {k: v for k, v in raw_headers}
         client_id = self._identity.resolve(headers_dict, client_ip)
 
-        # Scan request body if enabled
-        if self._config.scanner.enabled and body:
-            scan_start = time.monotonic()
-            try:
-                text = body.decode("utf-8")
-                # Run with timeout
-                timeout_s = self._config.security.scanner_timeout_ms / 1000.0
-                scan_result = await asyncio.wait_for(
-                    asyncio.to_thread(self._scanner.scan, text),
-                    timeout=timeout_s,
-                )
-                scan_duration = time.monotonic() - scan_start
-                self._metrics.record_scan("pipeline", scan_result.action, scan_duration)
+        result = await self._pipeline.process(PipelineRequest(
+            method=method,
+            path=path,
+            headers=headers,
+            body=body,
+            client_id=client_id,
+            target=self._resolve_target(upstream_host, upstream_port, path),
+        ))
 
-                # Apply policy
-                final_action = self._policy.resolve(client_id, scan_result)
-
-                if final_action == "block":
-                    self._metrics.record_detection(
-                        scan_result.category or "unknown",
-                        "block",
-                        scan_result.signature_id,
-                    )
-                    # Send blocked response
-                    # Log details server-side only (never expose to clients)
-                    logger.warning(
-                        "Request blocked",
-                        extra={
-                            "category": scan_result.category,
-                            "signature_id": scan_result.signature_id,
-                            "client_id": client_id,
-                            "internal_details": scan_result.details,  # For debugging only
-                        },
-                    )
-                    # Return generic message - never expose signature patterns
-                    await self._send_json_response(
-                        writer,
-                        400,
-                        {
-                            "error": {
-                                "type": "content_blocked",
-                                "code": f"{scan_result.category}_detected",
-                                "message": "Request blocked: policy violation detected",
-                                "category": scan_result.category,
-                            }
-                        },
-                    )
-                    return
-
-                if final_action in ("warn", "log"):
-                    self._metrics.record_detection(
-                        scan_result.category or "unknown",
-                        final_action,
-                        scan_result.signature_id,
-                    )
-                    logger.warning(
-                        "Detection",
-                        extra={
-                            "action": final_action,
-                            "category": scan_result.category,
-                            "client_id": client_id,
-                        },
-                    )
-
-            except asyncio.TimeoutError:
-                scan_duration = time.monotonic() - scan_start
-                self._metrics.record_scan("pipeline", "timeout", scan_duration)
-                logger.warning(
-                    "Scanner timeout",
-                    extra={"timeout_ms": self._config.security.scanner_timeout_ms},
-                )
-                if self._config.security.failure_mode == "closed":
-                    await self._send_json_response(
-                        writer,
-                        503,
-                        {"error": {"type": "scanner_timeout", "message": "Scanner timed out"}},
-                    )
-                    return
-            except Exception as e:
-                if self._config.security.failure_mode == "closed":
-                    await self._send_json_response(
-                        writer,
-                        503,
-                        {"error": {"type": "scanner_error", "message": "Scanner unavailable"}},
-                    )
-                    return
-                logger.error(f"Scanner error: {e}")
-
-        # Forward to upstream
-        try:
-            url = f"https://{upstream_host}:{upstream_port}{path}"
-
-            # Build headers for upstream request
-            # Include vendor-specific headers required by LLM providers
-            forward_headers: dict[str, str] = {}
-            allowed_headers = (
-                # Standard headers
-                "content-type", "accept", "accept-encoding", "accept-language",
-                # Auth headers
-                "authorization", "api-key", "x-api-key",
-                # OpenAI headers
-                "openai-organization", "openai-project", "openai-beta",
-                # Anthropic headers
-                "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
-                # OpenRouter headers
-                "x-title", "http-referer",
-                # Common request IDs
-                "x-request-id", "x-correlation-id",
-            )
-            for key in allowed_headers:
-                if key in headers:
-                    forward_headers[key] = headers[key]
-
-            if self._http_session is None:
-                self._http_session = aiohttp.ClientSession()
-
-            async with self._http_session.request(
-                method=method,
-                url=url,
-                headers=forward_headers,
-                data=body if body else None,
-                timeout=aiohttp.ClientTimeout(total=self._config.security.upstream_timeout_s),
-                ssl=True,  # Verify upstream SSL
-            ) as resp:
-                # Check response size limit before reading
-                upstream_content_length = resp.content_length
-                if upstream_content_length is not None and upstream_content_length > self._config.security.max_response_size:
-                    logger.warning(
-                        "Response too large",
-                        extra={
-                            "content_length": upstream_content_length,
-                            "limit": self._config.security.max_response_size,
-                        },
-                    )
-                    await self._send_json_response(
-                        writer,
-                        502,
-                        {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
-                    )
-                    return
-
-                response_body = await resp.read()
-
-                # Verify actual size after read (in case Content-Length was missing)
-                if len(response_body) > self._config.security.max_response_size:
-                    logger.warning(
-                        "Response too large (after read)",
-                        extra={
-                            "actual_size": len(response_body),
-                            "limit": self._config.security.max_response_size,
-                        },
-                    )
-                    await self._send_json_response(
-                        writer,
-                        502,
-                        {"error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}},
-                    )
-                    return
-
-                duration = time.monotonic() - start_time
-                self._metrics.record_request(upstream_host, method, resp.status, duration)
-
-                # Response scanning (if enabled)
-                response_scanner = self._scanner.response_scanner
-                if response_scanner and response_scanner.enabled and response_body:
-                    try:
-                        response_text = response_body.decode("utf-8")
-                        scan_start = time.monotonic()
-                        # Run with timeout
-                        timeout_s = self._config.security.scanner_timeout_ms / 1000.0
-                        response_scan_result = await asyncio.wait_for(
-                            asyncio.to_thread(response_scanner.scan, response_text),
-                            timeout=timeout_s,
-                        )
-                        scan_duration = time.monotonic() - scan_start
-                        self._metrics.record_scan(
-                            "response",
-                            "block" if response_scan_result.blocked else "allow",
-                            scan_duration,
-                        )
-
-                        if response_scan_result.blocked:
-                            self._metrics.record_detection(
-                                response_scan_result.category or "unknown",
-                                "block",
-                                response_scan_result.signature_id,
-                            )
-                            logger.warning(
-                                "Response blocked",
-                                extra={
-                                    "category": response_scan_result.category,
-                                    "signature_id": response_scan_result.signature_id,
-                                    "client_id": client_id,
-                                },
-                            )
-                            await self._send_json_response(
-                                writer,
-                                502,
-                                {
-                                    "error": {
-                                        "type": "response_blocked",
-                                        "code": f"{response_scan_result.category}_detected",
-                                        "message": "Response blocked: sensitive content detected",
-                                    }
-                                },
-                            )
-                            return
-
-                        if response_scan_result.has_detections:
-                            self._metrics.record_detection(
-                                response_scan_result.category or "unknown",
-                                "warn",
-                                response_scan_result.signature_id,
-                            )
-                            logger.warning(
-                                "Response detection (non-blocking)",
-                                extra={
-                                    "category": response_scan_result.category,
-                                    "signature_id": response_scan_result.signature_id,
-                                    "client_id": client_id,
-                                },
-                            )
-                    except UnicodeDecodeError:
-                        # Binary response, skip scanning
-                        pass
-                    except asyncio.TimeoutError:
-                        scan_duration = time.monotonic() - scan_start
-                        self._metrics.record_scan("response", "timeout", scan_duration)
-                        logger.warning(
-                            "Response scanner timeout",
-                            extra={"timeout_ms": self._config.security.scanner_timeout_ms},
-                        )
-                        # On timeout, pass through response in open mode
-                        # In closed mode, block the response
-                        if self._config.security.failure_mode == "closed":
-                            await self._send_json_response(
-                                writer,
-                                502,
-                                {
-                                    "error": {
-                                        "type": "scanner_timeout",
-                                        "message": "Response scanner timed out",
-                                    }
-                                },
-                            )
-                            return
-                    except Exception as e:
-                        logger.error(f"Response scanner error: {e}")
-
-                # Send response back to client
-                status_line = f"HTTP/1.1 {resp.status} {resp.reason}\r\n"
-                writer.write(status_line.encode())
-
-                # Forward response headers
-                for header in (
-                    "content-type",
-                    "x-request-id",
-                    "retry-after",
-                    "x-ratelimit-limit",
-                    "x-ratelimit-remaining",
-                    "x-ratelimit-reset",
-                ):
-                    if header in resp.headers:
-                        writer.write(f"{header}: {resp.headers[header]}\r\n".encode())
-
-                writer.write(f"content-length: {len(response_body)}\r\n".encode())
-                writer.write(b"\r\n")
-                writer.write(response_body)
-                await writer.drain()
-
-        except aiohttp.ClientError as e:
-            duration = time.monotonic() - start_time
-            self._metrics.record_request(upstream_host, method, 502, duration)
-            logger.error(f"Upstream error: {e}")
-            await self._send_json_response(
-                writer,
-                502,
-                {"error": {"type": "upstream_error", "message": str(e)}},
-            )
+        # Send response back to client
+        reason = result.reason or _status_reason(result.status)
+        writer.write(f"HTTP/1.1 {result.status} {reason}\r\n".encode())
+        for header, value in result.headers.items():
+            writer.write(f"{header}: {value}\r\n".encode())
+        writer.write(f"content-length: {len(result.body)}\r\n".encode())
+        writer.write(b"\r\n")
+        writer.write(result.body)
+        await writer.drain()
 
     async def _handle_http(
         self,
@@ -649,6 +433,15 @@ class TLSInterceptProxy:
         path = parsed.path or "/"
         if parsed.query:
             path += f"?{parsed.query}"
+
+        # Validate host is in allowlist (same rule as CONNECT - prevents open proxy abuse)
+        if not self._is_host_allowed(host):
+            logger.warning(
+                "HTTP request to disallowed host rejected",
+                extra={"host": host, "port": port, "peer": peername},
+            )
+            await self._send_error(writer, 403, "Forbidden: host not in allowlist")
+            return
 
         # Read body if present
         body = b""
