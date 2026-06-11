@@ -18,13 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 import aiohttp
 from aiohttp import web
 
 if TYPE_CHECKING:
     from aiproxyguard.config import Config
+    from aiproxyguard.control_plane import ControlPlaneClient
 
 from aiproxyguard import __version__
 from aiproxyguard.signatures.models import SignatureSet
@@ -41,6 +42,82 @@ from aiproxyguard.control_plane import init_client, get_client
 logger = get_logger("server")
 
 
+def register_control_plane_callbacks(
+    cp_client: "ControlPlaneClient",
+    *,
+    scanner: ScannerPipeline,
+    policy: PolicyEngine,
+    config: "Config",
+    metrics: MetricsCollector,
+    on_signatures_reloaded: "Callable[[SignatureSet], None] | None" = None,
+) -> None:
+    """Wire control-plane config-update callbacks for a proxy instance.
+
+    Shared by both transports (HTTP server and TLS intercept proxy) so a new
+    callback type is registered in exactly one place. The HTTP path passes
+    ``on_signatures_reloaded`` to also refresh its app-level signature cache.
+    """
+    # Policy updates
+    cp_client.set_policy_update_callback(policy.update_config)
+
+    # Signature hot-reload
+    def on_signature_update(new_signatures: "SignatureSet") -> None:
+        scanner.reload(new_signatures)
+        metrics.set_signatures_loaded("free", len(new_signatures.signatures))
+        if on_signatures_reloaded is not None:
+            on_signatures_reloaded(new_signatures)
+
+    cp_client.set_signature_update_callback(on_signature_update)
+
+    # ML model hot-reload for tier-based model sync
+    def on_ml_model_update(model_data: bytes, license_data: dict[str, Any]) -> None:
+        if scanner.load_ml_from_bytes(model_data, model_config=license_data):
+            model_id = license_data.get("model_id", "unknown")
+            tier = license_data.get("tier", "unknown")
+            logger.info(
+                "ML model updated from control plane",
+                extra={"model_id": model_id, "tier": tier},
+            )
+
+    cp_client.set_ml_model_callback(on_ml_model_update)
+
+    # Logging config
+    def on_logging_update(log_config: dict[str, Any]) -> None:
+        update_logging(
+            level=log_config.get("level"),
+            format=log_config.get("format"),
+            redact_keys=log_config.get("redact_keys"),
+        )
+
+    cp_client.set_logging_update_callback(on_logging_update)
+
+    # Scanner config
+    def on_scanner_update(scanner_config: dict[str, Any]) -> None:
+        scanner.update_scanner_config(scanner_config)
+
+    cp_client.set_scanner_update_callback(on_scanner_update)
+
+    # ML classifier config
+    def on_ml_config_update(ml_cfg: dict[str, Any]) -> None:
+        scanner.update_ml_config(ml_cfg)
+
+    cp_client.set_ml_config_update_callback(on_ml_config_update)
+
+    # Security config
+    def on_security_update(security_config: dict[str, Any]) -> None:
+        if "failure_mode" in security_config:
+            config.security.failure_mode = security_config["failure_mode"]
+        if "scanner_timeout_ms" in security_config:
+            config.security.scanner_timeout_ms = security_config["scanner_timeout_ms"]
+
+    cp_client.set_security_update_callback(on_security_update)
+
+    # Set initial signature version from bundled signatures
+    initial_sig_version = get_signature_version(config.signatures.path)
+    if initial_sig_version:
+        cp_client.set_initial_signature_version(initial_sig_version)
+
+
 async def on_startup(app: web.Application) -> None:
     """Create shared HTTP session and start control plane client."""
     app["http_session"] = aiohttp.ClientSession()
@@ -55,77 +132,17 @@ async def on_startup(app: web.Application) -> None:
     # Start control plane client
     cp_client = get_client()
     if cp_client:
-        # Register policy update callback
-        policy_engine: PolicyEngine = app["policy"]
-        cp_client.set_policy_update_callback(policy_engine.update_config)
-
-        # Register signature update callback for hot-reload
-        scanner: ScannerPipeline = app["scanner"]
-        metrics: MetricsCollector = app["metrics"]
-
-        def on_signature_update(new_signatures: "SignatureSet") -> None:
-            """Hot-reload signatures into the scanner without restart."""
-            scanner.reload(new_signatures)
+        def cache_signatures(new_signatures: "SignatureSet") -> None:
             app["signatures"] = new_signatures
-            metrics.set_signatures_loaded("free", len(new_signatures.signatures))
 
-        cp_client.set_signature_update_callback(on_signature_update)
-
-        # Register ML model update callback for tier-based model sync
-        def on_ml_model_update(model_data: bytes, license_data: dict) -> None:
-            """Hot-reload ML model from control plane."""
-            if scanner.load_ml_from_bytes(model_data, model_config=license_data):
-                model_id = license_data.get("model_id", "unknown")
-                tier = license_data.get("tier", "unknown")
-                logger.info(
-                    "ML model updated from control plane",
-                    extra={"model_id": model_id, "tier": tier},
-                )
-
-        cp_client.set_ml_model_callback(on_ml_model_update)
-
-        # Register logging config update callback
-        def on_logging_update(config: dict) -> None:
-            """Update logging settings from control plane."""
-            update_logging(
-                level=config.get("level"),
-                format=config.get("format"),
-                redact_keys=config.get("redact_keys"),
-            )
-
-        cp_client.set_logging_update_callback(on_logging_update)
-
-        # Register scanner config update callback
-        def on_scanner_update(config: dict) -> None:
-            """Update scanner settings from control plane."""
-            scanner.update_scanner_config(config)
-
-        cp_client.set_scanner_update_callback(on_scanner_update)
-
-        # Register ML classifier config update callback
-        def on_ml_config_update(config: dict) -> None:
-            """Update ML classifier settings from control plane."""
-            scanner.update_ml_config(config)
-
-        cp_client.set_ml_config_update_callback(on_ml_config_update)
-
-        # Register security config update callback
-        def on_security_update(config: dict) -> None:
-            """Update security settings from control plane."""
-            app_config: Config = app["config"]
-            if "failure_mode" in config:
-                app_config.security.failure_mode = config["failure_mode"]
-            if "scanner_timeout_ms" in config:
-                app_config.security.scanner_timeout_ms = config["scanner_timeout_ms"]
-
-        cp_client.set_security_update_callback(on_security_update)
-
-        # Set initial signature version from bundled signatures
-        config: Config = app["config"]
-        initial_sig_version = get_signature_version(config.signatures.path)
-        if initial_sig_version:
-            cp_client.set_initial_signature_version(initial_sig_version)
-
+        register_control_plane_callbacks(
+            cp_client,
+            scanner=app["scanner"],
+            policy=app["policy"],
+            config=app["config"],
+            metrics=app["metrics"],
+            on_signatures_reloaded=cache_signatures,
+        )
         await cp_client.start()
 
 
@@ -475,70 +492,13 @@ async def _run_tls_server(config: Config) -> None:
         cp_client = get_client()
 
         if cp_client:
-            # Register policy update callback
-            cp_client.set_policy_update_callback(policy.update_config)
-
-            # Register signature update callback for hot-reload
-            def on_signature_update(new_signatures: "SignatureSet") -> None:
-                """Hot-reload signatures into the scanner without restart."""
-                scanner.reload(new_signatures)
-                metrics.set_signatures_loaded("free", len(new_signatures.signatures))
-
-            cp_client.set_signature_update_callback(on_signature_update)
-
-            # Register ML model update callback for tier-based model sync
-            def on_ml_model_update(model_data: bytes, license_data: dict) -> None:
-                """Hot-reload ML model from control plane."""
-                if scanner.load_ml_from_bytes(model_data, model_config=license_data):
-                    model_id = license_data.get("model_id", "unknown")
-                    tier = license_data.get("tier", "unknown")
-                    logger.info(
-                        "ML model updated from control plane",
-                        extra={"model_id": model_id, "tier": tier},
-                    )
-
-            cp_client.set_ml_model_callback(on_ml_model_update)
-
-            # Register logging config update callback
-            def on_logging_update(log_config: dict) -> None:
-                """Update logging settings from control plane."""
-                update_logging(
-                    level=log_config.get("level"),
-                    format=log_config.get("format"),
-                    redact_keys=log_config.get("redact_keys"),
-                )
-
-            cp_client.set_logging_update_callback(on_logging_update)
-
-            # Register scanner config update callback
-            def on_scanner_update(scanner_config: dict) -> None:
-                """Update scanner settings from control plane."""
-                scanner.update_scanner_config(scanner_config)
-
-            cp_client.set_scanner_update_callback(on_scanner_update)
-
-            # Register ML classifier config update callback
-            def on_ml_config_update(ml_cfg: dict) -> None:
-                """Update ML classifier settings from control plane."""
-                scanner.update_ml_config(ml_cfg)
-
-            cp_client.set_ml_config_update_callback(on_ml_config_update)
-
-            # Register security config update callback
-            def on_security_update(security_config: dict) -> None:
-                """Update security settings from control plane."""
-                if "failure_mode" in security_config:
-                    config.security.failure_mode = security_config["failure_mode"]
-                if "scanner_timeout_ms" in security_config:
-                    config.security.scanner_timeout_ms = security_config["scanner_timeout_ms"]
-
-            cp_client.set_security_update_callback(on_security_update)
-
-            # Set initial signature version from bundled signatures
-            initial_sig_version = get_signature_version(config.signatures.path)
-            if initial_sig_version:
-                cp_client.set_initial_signature_version(initial_sig_version)
-
+            register_control_plane_callbacks(
+                cp_client,
+                scanner=scanner,
+                policy=policy,
+                config=config,
+                metrics=metrics,
+            )
             # Start the control plane client
             await cp_client.start()
 

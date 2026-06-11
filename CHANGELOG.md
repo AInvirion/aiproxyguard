@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.51] - 2026-06-10
+
+### Changed
+- **Deduplicated control-plane callback registration across transports** - the HTTP server and TLS intercept proxy previously wired their seven config-update callbacks (policy, signatures, ML model, logging, scanner, ML classifier, security) with verbatim copy-pasted blocks. Both paths now call a single `register_control_plane_callbacks()` helper, so a new callback type is added in exactly one place and the transports cannot drift apart. Completes the forwarding/wiring unification begun in 0.2.50.
+
 ## [0.2.50] - 2026-06-10
 
 ### Changed
@@ -230,7 +235,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.50...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.51...HEAD
+[0.2.51]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.50...v0.2.51
 [0.2.50]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.48...v0.2.50
 [0.2.38]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.37...v0.2.38
 [0.2.37]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.36...v0.2.37
