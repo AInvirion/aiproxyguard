@@ -500,15 +500,14 @@ class RequestPipeline:
                 "Response scanner timeout",
                 extra={"timeout_ms": config.security.scanner_timeout_ms},
             )
-            # Honor failure_mode: closed blocks the response, open passes it through
-            if config.security.failure_mode == "closed":
-                return _json_result(502, {
-                    "error": {"type": "scanner_timeout", "message": "Response scanner timed out"}
-                })
+            # Response scanning always fails open on timeout, independent of
+            # failure_mode. A timeout is not a detection, and the upstream
+            # response already succeeded (and was billed) -- a slow secondary
+            # scan must not convert it into an error. failure_mode governs
+            # request admission and response *detections*, not this timeout.
         except Exception as e:
             logger.error(f"Response scanner error: {e}")
-            # In case of scanner error, we still return the response
-            # (fail open for response scanning by default)
+            # Same rationale: a scanner error must not drop a successful response.
 
         return None
 

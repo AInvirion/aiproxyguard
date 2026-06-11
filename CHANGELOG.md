@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.52] - 2026-06-10
+
+### Fixed
+- **Response-scanner timeout now fails open on both proxy paths**, independent of `failure_mode`. The pipeline unification in 0.2.50 had inadvertently made the HTTP path block the response with a 502 in `failure_mode=closed` when the response scan timed out — a regression, since the original HTTP path always passed the response through on timeout. A response-scan timeout is not a detection, and the upstream response has already succeeded and been billed, so a slow secondary scan must not convert it into an error. `failure_mode` still governs request admission and genuine response *detections*; only the response-scan *timeout* path is affected. Default deployments (`failure_mode: open`) were never impacted.
+
 ## [0.2.51] - 2026-06-10
 
 ### Changed
@@ -20,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **TLS-intercept mode now reports detections to the control plane** - block, warn, and response detections (including model and token telemetry) were silently dropped on the TLS path, making TLS-mode instances invisible in cloud telemetry and savings dashboards.
 - Plain HTTP (non-CONNECT) requests through the TLS proxy now enforce the same upstream host allowlist as CONNECT, closing an open-proxy gap.
-- Response-scanner timeout in `failure_mode=closed` now blocks the response on both proxy paths (the HTTP path previously failed open).
+- Plain HTTP and TLS response scanning now share one code path (see 0.2.52 for the finalized response-scan timeout semantics).
 
 ## [0.2.42] - 2026-04-03
 
@@ -235,7 +240,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.51...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.52...HEAD
+[0.2.52]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.51...v0.2.52
 [0.2.51]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.50...v0.2.51
 [0.2.50]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.48...v0.2.50
 [0.2.38]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.37...v0.2.38
