@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.50] - 2026-06-10
+
+### Changed
+- **Unified HTTP and TLS forwarding into a shared request pipeline** - `server.py` and `tls_proxy.py` previously implemented forwarding independently and had diverged. Both now use a single transport-agnostic pipeline (parse → mutate → serialize → scan → forward → scan response), so the scanner always inspects the exact bytes forwarded upstream.
+- TLS-intercept proxy now resolves per-upstream `auth_header` and `timeout` by hostname instead of a fixed header allowlist and the global timeout. Exactly one auth header is forwarded on both paths.
+- Fleet registration and heartbeat metadata now report deployment mode (`http`/`tls`).
+
+### Fixed
+- **TLS-intercept mode now reports detections to the control plane** - block, warn, and response detections (including model and token telemetry) were silently dropped on the TLS path, making TLS-mode instances invisible in cloud telemetry and savings dashboards.
+- Plain HTTP (non-CONNECT) requests through the TLS proxy now enforce the same upstream host allowlist as CONNECT, closing an open-proxy gap.
+- Response-scanner timeout in `failure_mode=closed` now blocks the response on both proxy paths (the HTTP path previously failed open).
+
 ## [0.2.42] - 2026-04-03
 
 ### Fixed
@@ -218,7 +230,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.38...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.50...HEAD
+[0.2.50]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.48...v0.2.50
 [0.2.38]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.37...v0.2.38
 [0.2.37]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.36...v0.2.37
 [0.2.36]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.35...v0.2.36
