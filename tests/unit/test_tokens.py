@@ -66,3 +66,61 @@ class TestCountTokens:
         assert short is not None
         assert long is not None
         assert long > short
+
+
+class TestBilledTokens:
+    """Tests for billed_tokens extraction from response usage fields."""
+
+    def test_openai_shape(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        result = billed_tokens({
+            "id": "chatcmpl-1",
+            "model": "gpt-4o-2024-08-06",
+            "usage": {"prompt_tokens": 12, "completion_tokens": 34, "total_tokens": 46},
+        })
+        assert result is not None
+        assert result.input_tokens == 12
+        assert result.output_tokens == 34
+
+    def test_anthropic_shape(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        result = billed_tokens({
+            "id": "msg_1",
+            "model": "claude-sonnet-4-5",
+            "usage": {"input_tokens": 7, "output_tokens": 21},
+        })
+        assert result is not None
+        assert result.input_tokens == 7
+        assert result.output_tokens == 21
+
+    def test_missing_usage_returns_none(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        assert billed_tokens({"id": "chatcmpl-1", "choices": []}) is None
+
+    def test_error_body_returns_none(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        assert billed_tokens({"error": {"message": "invalid key"}}) is None
+
+    def test_malformed_usage_returns_none(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        assert billed_tokens({"usage": "lots"}) is None
+        assert billed_tokens({"usage": {"prompt_tokens": "12", "completion_tokens": 3}}) is None
+        assert billed_tokens({"usage": {"prompt_tokens": 12}}) is None
+
+    def test_bool_values_rejected(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        assert billed_tokens({"usage": {"prompt_tokens": True, "completion_tokens": False}}) is None
+
+    def test_zero_tokens_valid(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        result = billed_tokens({"usage": {"input_tokens": 0, "output_tokens": 0}})
+        assert result is not None
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0

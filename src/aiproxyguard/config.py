@@ -137,6 +137,7 @@ class ControlPlaneConfig:
     heartbeat_interval: int = 60
     sync_signatures: bool = True
     report_telemetry: bool = True
+    report_usage: bool = True  # Per-request billed-token usage events on allowed requests
     manifest_public_key: str = ""  # Ed25519 public key (base64) for manifest verification
     cache_mode: str = "full"  # "full", "encrypted_only", "none"
 
@@ -340,6 +341,7 @@ def load_config(path: str) -> Config:
         heartbeat_interval=control_plane_data.get("heartbeat_interval", 60),
         sync_signatures=_to_bool(control_plane_data.get("sync_signatures", True), default=True),
         report_telemetry=_to_bool(control_plane_data.get("report_telemetry", True), default=True),
+        report_usage=_to_bool(control_plane_data.get("report_usage", True), default=True),
         manifest_public_key=control_plane_data.get("manifest_public_key", ""),
     )
 

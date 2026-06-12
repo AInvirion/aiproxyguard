@@ -147,17 +147,25 @@ def _get_fingerprint() -> str:
 
 @dataclass
 class TelemetryEvent:
-    """A detection event to report to the control plane."""
+    """A detection or usage event to report to the control plane."""
 
-    event_type: str  # "detection", "block", "allow"
-    category: str  # "prompt-injection", "jailbreak", etc.
+    event_type: str  # "block", "warn", "log", "response_detection", "usage"
+    category: str  # "prompt-injection", "jailbreak", "usage", etc.
     signature_id: str | None = None
     latency_ms: int | None = None
     provider: str | None = None  # "ollama", "openai", "anthropic", etc.
     endpoint: str | None = None  # "/api/chat", "/v1/completions", etc.
     model: str | None = None  # "gpt-4o", "claude-3-sonnet", etc.
-    input_tokens: int | None = None  # Token count of blocked prompt
+    input_tokens: int | None = None  # Estimated (blocks) or billed (usage) input tokens
+    output_tokens: int | None = None  # Billed output tokens (usage events only)
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Telemetry buffer safety rails: the cloud rejects batches over 100 events,
+# and usage events arrive per allowed request, so flush in chunks and cap the
+# buffer so an unreachable control plane cannot grow memory unboundedly.
+TELEMETRY_FLUSH_BATCH_SIZE = 100
+TELEMETRY_BUFFER_MAX = 10_000
 
 
 class ControlPlaneClient:
@@ -1219,8 +1227,56 @@ class ControlPlaneClient:
             input_tokens=input_tokens,
         )
 
+        await self._buffer_event(event)
+
+    async def report_usage(
+        self,
+        provider: str | None = None,
+        endpoint: str | None = None,
+        model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        latency_ms: int | None = None,
+    ) -> None:
+        """Buffer a billed-token usage event for an allowed (forwarded) request.
+
+        Token counts are the provider-billed values from the response usage
+        field, not estimates. Gated by control_plane.report_usage in addition
+        to the usual telemetry gates.
+        """
+        if not self.config.enabled or not self.config.report_telemetry:
+            return
+        if not getattr(self.config, "report_usage", True):
+            return
+        if not self._registered:
+            return
+
+        event = TelemetryEvent(
+            event_type="usage",
+            category="usage",
+            latency_ms=latency_ms,
+            provider=provider,
+            endpoint=endpoint,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+        await self._buffer_event(event)
+
+    async def _buffer_event(self, event: TelemetryEvent) -> None:
+        """Append an event to the telemetry buffer, flushing when large."""
         async with self._telemetry_lock:
             self._telemetry_buffer.append(event)
+
+            # Cap buffer growth when the control plane is unreachable
+            overflow = len(self._telemetry_buffer) - TELEMETRY_BUFFER_MAX
+            if overflow > 0:
+                del self._telemetry_buffer[:overflow]
+                logger.warning(
+                    "Telemetry buffer full; dropped oldest events",
+                    extra={"dropped": overflow},
+                )
 
             # Flush if buffer is large
             if len(self._telemetry_buffer) >= 50:
@@ -1232,40 +1288,95 @@ class ControlPlaneClient:
             await self._flush_telemetry_unlocked()
 
     async def _flush_telemetry_unlocked(self) -> None:
-        """Flush telemetry without acquiring lock (caller must hold lock)."""
+        """Flush telemetry without acquiring lock (caller must hold lock).
+
+        Sends in chunks of TELEMETRY_FLUSH_BATCH_SIZE -- the cloud rejects
+        larger batches with a 422, which would otherwise wedge the buffer
+        in a permanent re-buffer/reject loop.
+
+        Usage events are sent in separate chunks from detection events: the
+        cloud validates a batch as a whole, so against an older control plane
+        that doesn't know the "usage" event type, a mixed batch would be
+        rejected wholesale and lose detection telemetry alongside it.
+        """
         if not self._telemetry_buffer:
             return
 
         events = self._telemetry_buffer
         self._telemetry_buffer = []
 
+        groups = [
+            [e for e in events if e.event_type != "usage"],
+            [e for e in events if e.event_type == "usage"],
+        ]
+        unsent: list[TelemetryEvent] = []
+        for i, group in enumerate(groups):
+            remainder = await self._send_event_chunks(group)
+            if remainder:
+                # Transient failure: stop here rather than hammering the
+                # endpoint with the next group; keep everything unsent.
+                unsent.extend(remainder)
+                for later_group in groups[i + 1:]:
+                    unsent.extend(later_group)
+                break
+
+        if unsent:
+            self._telemetry_buffer = unsent + self._telemetry_buffer
+
+    async def _send_event_chunks(self, events: list[TelemetryEvent]) -> list[TelemetryEvent]:
+        """Send events in batch-size chunks. Returns events to retry later.
+
+        - Network errors and 5xx: remaining events are returned for retry.
+        - 408/429: transient; remaining events are returned for retry.
+        - Other 4xx: permanent rejection (schema mismatch, old control plane);
+          the chunk is dropped -- retrying it would wedge the buffer forever.
+        """
+        sent = 0
         try:
-            response = await self.client.post(
-                "/api/v1/telemetry/events",
-                json={
-                    "events": [
-                        {
-                            "instance_id": self.instance_id,
-                            "timestamp": e.timestamp.isoformat(),
-                            "event_type": e.event_type,
-                            "category": e.category,
-                            "signature_id": e.signature_id,
-                            "latency_ms": e.latency_ms,
-                            "provider": e.provider,
-                            "endpoint": e.endpoint,
-                            "model": e.model,
-                            "input_tokens": e.input_tokens,
-                        }
-                        for e in events
-                    ]
-                },
-            )
-            response.raise_for_status()
-            logger.debug(f"Flushed {len(events)} telemetry events")
+            while sent < len(events):
+                chunk = events[sent:sent + TELEMETRY_FLUSH_BATCH_SIZE]
+                response = await self.client.post(
+                    "/api/v1/telemetry/events",
+                    json={
+                        "events": [
+                            {
+                                "instance_id": self.instance_id,
+                                "timestamp": e.timestamp.isoformat(),
+                                "event_type": e.event_type,
+                                "category": e.category,
+                                "signature_id": e.signature_id,
+                                "latency_ms": e.latency_ms,
+                                "provider": e.provider,
+                                "endpoint": e.endpoint,
+                                "model": e.model,
+                                "input_tokens": e.input_tokens,
+                                "output_tokens": e.output_tokens,
+                            }
+                            for e in chunk
+                        ]
+                    },
+                )
+                if response.status_code in (408, 429):
+                    logger.warning(
+                        "Telemetry temporarily rejected; will retry",
+                        extra={"status": response.status_code, "events": len(chunk)},
+                    )
+                    return events[sent:]
+                if 400 <= response.status_code < 500:
+                    logger.warning(
+                        "Telemetry chunk rejected by control plane; dropping",
+                        extra={"status": response.status_code, "events": len(chunk)},
+                    )
+                    sent += len(chunk)
+                    continue
+                response.raise_for_status()
+                sent += len(chunk)
+            if sent:
+                logger.debug(f"Flushed {sent} telemetry events")
         except httpx.HTTPError as e:
             logger.warning(f"Failed to flush telemetry: {e}")
-            # Re-add events to buffer for retry
-            self._telemetry_buffer = events + self._telemetry_buffer
+            return events[sent:]
+        return []
 
     async def fetch_signatures(self, tier: str = "free") -> list[dict]:
         """Fetch signature manifest from control plane."""
