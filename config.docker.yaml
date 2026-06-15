@@ -65,4 +65,5 @@ control_plane:
   heartbeat_interval: 60
   sync_signatures: true
   report_telemetry: true
+  report_usage: ${AIPROXYGUARD_REPORT_USAGE:-true}
   manifest_public_key: "${AIPROXYGUARD_MANIFEST_PUBLIC_KEY:-j4ztN19sQfU0pCqRV/GmlV50+oeqsO18mHQkMQnyb+k=}"

@@ -39,6 +39,7 @@ class MockControlPlaneConfig:
     heartbeat_interval: int = 60
     sync_signatures: bool = True
     report_telemetry: bool = True
+    report_usage: bool = True
     manifest_public_key: str = ""
 
 
@@ -274,6 +275,7 @@ class TestControlPlaneClientWithMockedHTTP:
 
         # Mock the HTTP client
         mock_response = AsyncMock()
+        mock_response.status_code = 201
         mock_response.raise_for_status = MagicMock()
 
         client._client = AsyncMock()
@@ -414,6 +416,7 @@ class TestControlPlaneClientWithMockedHTTP:
 
         # Mock the HTTP client
         mock_response = AsyncMock()
+        mock_response.status_code = 201
         mock_response.raise_for_status = MagicMock()
 
         client._client = AsyncMock()
@@ -435,3 +438,342 @@ class TestControlPlaneClientWithMockedHTTP:
         event = payload["events"][0]
         assert event["model"] == "gpt-4o"
         assert event["input_tokens"] == 1250
+
+
+class TestUsageReporting:
+    """Tests for billed-token usage events and telemetry buffer safety rails."""
+
+    @pytest.mark.asyncio
+    async def test_report_usage_buffers_event(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        await client.report_usage(
+            provider="openai",
+            endpoint="/openai/v1/chat/completions",
+            model="gpt-4o-2024-08-06",
+            input_tokens=12,
+            output_tokens=34,
+            latency_ms=250,
+        )
+
+        assert len(client._telemetry_buffer) == 1
+        event = client._telemetry_buffer[0]
+        assert event.event_type == "usage"
+        assert event.category == "usage"
+        assert event.input_tokens == 12
+        assert event.output_tokens == 34
+        assert event.model == "gpt-4o-2024-08-06"
+
+    @pytest.mark.asyncio
+    async def test_report_usage_gated_by_config_flag(self):
+        config = MockControlPlaneConfig(report_usage=False)
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
+
+        assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_report_usage_gated_by_report_telemetry(self):
+        config = MockControlPlaneConfig(report_telemetry=False)
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
+
+        assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_report_usage_skipped_when_not_registered(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = False
+
+        await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
+
+        assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_flush_chunks_large_buffers(self):
+        """Buffers larger than the cloud's 100-event batch limit must be
+        flushed in multiple posts, not one oversized rejected batch."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="usage", category="usage") for _ in range(250)
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = MagicMock()
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        assert len(client._telemetry_buffer) == 0
+        assert client._client.post.call_count == 3  # 100 + 100 + 50
+        for call in client._client.post.call_args_list:
+            assert len(call.kwargs["json"]["events"]) <= 100
+
+    @pytest.mark.asyncio
+    async def test_flush_drops_chunk_on_4xx(self):
+        """A 4xx rejection is permanent -- the chunk must be dropped, not
+        re-buffered into an infinite retry loop."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="usage", category="usage") for _ in range(5)
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 422
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        assert len(client._telemetry_buffer) == 0  # dropped, not re-buffered
+
+    @pytest.mark.asyncio
+    async def test_flush_rebuffers_unsent_on_network_error(self):
+        import httpx
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="usage", category="usage") for _ in range(5)
+        ]
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=httpx.ConnectError("down"))
+
+        await client._flush_telemetry()
+
+        assert len(client._telemetry_buffer) == 5  # retained for retry
+
+    @pytest.mark.asyncio
+    async def test_buffer_capped_at_max(self):
+        from aiproxyguard.control_plane import TELEMETRY_BUFFER_MAX
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        # Simulate an unreachable CP: flush is a no-op that keeps the buffer
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="usage", category="usage")
+            for _ in range(TELEMETRY_BUFFER_MAX)
+        ]
+
+        async def noop_flush():
+            return None
+
+        client._flush_telemetry = noop_flush  # type: ignore[method-assign]
+
+        await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
+
+        assert len(client._telemetry_buffer) == TELEMETRY_BUFFER_MAX
+
+    @pytest.mark.asyncio
+    async def test_flush_payload_includes_output_tokens(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(
+                event_type="usage", category="usage",
+                provider="anthropic", model="claude-sonnet-4-5",
+                input_tokens=7, output_tokens=21, latency_ms=300,
+            ),
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = MagicMock()
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        event = client._client.post.call_args.kwargs["json"]["events"][0]
+        assert event["event_type"] == "usage"
+        assert event["input_tokens"] == 7
+        assert event["output_tokens"] == 21
+
+
+class TestMixedBatchIsolation:
+    """Usage events must never poison detection telemetry in a shared batch."""
+
+    @pytest.mark.asyncio
+    async def test_usage_and_detection_events_sent_in_separate_posts(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="prompt-injection"),
+            TelemetryEvent(event_type="usage", category="usage"),
+            TelemetryEvent(event_type="warn", category="jailbreak"),
+            TelemetryEvent(event_type="usage", category="usage"),
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = MagicMock()
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        assert client._client.post.call_count == 2
+        for call in client._client.post.call_args_list:
+            types = {e["event_type"] for e in call.kwargs["json"]["events"]}
+            # Each POST must be homogeneous: all-usage or no-usage
+            assert types == {"usage"} or "usage" not in types
+
+    @pytest.mark.asyncio
+    async def test_usage_rejection_does_not_lose_detection_events(self):
+        """Old control plane rejects usage events with 422; detection events
+        in the same flush must still be delivered."""
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="prompt-injection"),
+            TelemetryEvent(event_type="usage", category="usage"),
+        ]
+
+        delivered: list[list[str]] = []
+
+        async def post(url, json):
+            types = [e["event_type"] for e in json["events"]]
+            resp = AsyncMock()
+            resp.raise_for_status = MagicMock()
+            if "usage" in types:
+                resp.status_code = 422  # old cloud: unknown event_type
+            else:
+                resp.status_code = 201
+                delivered.append(types)
+            return resp
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=post)
+
+        await client._flush_telemetry()
+
+        assert delivered == [["block"]]  # detection delivered
+        assert len(client._telemetry_buffer) == 0  # usage dropped, not wedged
+
+    @pytest.mark.asyncio
+    async def test_429_rebuffers_instead_of_dropping(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="prompt-injection"),
+            TelemetryEvent(event_type="block", category="jailbreak"),
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 429
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        assert len(client._telemetry_buffer) == 2  # retained for retry
+
+
+class TestFlushCancellationSafety:
+    @pytest.mark.asyncio
+    async def test_cancel_mid_flush_resets_flushing_without_duplicating(self):
+        """Cancelling a flush mid-network-IO must reset _flushing (no wedge)
+        and must NOT requeue the in-flight batch -- at-most-once, so an
+        already-sent billing event is never double-counted on shutdown."""
+        import asyncio
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="prompt-injection"),
+            TelemetryEvent(event_type="usage", category="usage"),
+        ]
+
+        started = asyncio.Event()
+
+        async def hang(*args, **kwargs):
+            started.set()
+            await asyncio.sleep(3600)  # never completes; will be cancelled
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=hang)
+
+        task = asyncio.create_task(client._flush_telemetry())
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert client._flushing is False  # not wedged
+        # In-flight batch dropped on hard cancel (at-most-once), not requeued
+        assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_requeue_on_transient_failure_respects_buffer_cap(self):
+        from aiproxyguard.control_plane import TELEMETRY_BUFFER_MAX
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="x")
+            for _ in range(TELEMETRY_BUFFER_MAX)
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 429  # transient -> whole batch requeued
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        assert len(client._telemetry_buffer) <= TELEMETRY_BUFFER_MAX
+
+    @pytest.mark.asyncio
+    async def test_single_flight_guard_prevents_concurrent_flush(self):
+        import asyncio
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [TelemetryEvent(event_type="block", category="x")]
+
+        release = asyncio.Event()
+        post_calls = 0
+
+        async def slow_post(*args, **kwargs):
+            nonlocal post_calls
+            post_calls += 1
+            await release.wait()
+            resp = AsyncMock()
+            resp.status_code = 201
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=slow_post)
+
+        t1 = asyncio.create_task(client._flush_telemetry())
+        await asyncio.sleep(0.05)  # let t1 enter the flush and start the post
+        # Second flush should no-op via the single-flight guard
+        await client._flush_telemetry()
+        release.set()
+        await t1
+
+        assert post_calls == 1

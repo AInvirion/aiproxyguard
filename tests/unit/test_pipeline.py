@@ -363,3 +363,132 @@ class TestResponseScanTimeout:
         pipeline, session = self._pipeline_with_slow_response_scanner("closed")
         result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
         assert result.status == 200
+
+
+class TestUsageReporting:
+    """Billed-token usage events for allowed (forwarded) requests."""
+
+    OPENAI_BODY = (
+        b'{"id": "chatcmpl-1", "model": "gpt-4o-2024-08-06",'
+        b' "choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 34}}'
+    )
+
+    def _cp_client(self) -> MagicMock:
+        cp = MagicMock()
+        cp.report_usage = AsyncMock()
+        cp.report_detection = AsyncMock()
+        return cp
+
+    async def test_usage_reported_on_success(self) -> None:
+        pipeline, session = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY))
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+
+        assert result.status == 200
+        cp.report_usage.assert_called_once()
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["provider"] == "openai"
+        assert kwargs["model"] == "gpt-4o-2024-08-06"  # response model, not request alias
+        assert kwargs["input_tokens"] == 12
+        assert kwargs["output_tokens"] == 34
+        assert kwargs["latency_ms"] >= 0
+
+    async def test_no_usage_event_on_upstream_error(self) -> None:
+        error_body = b'{"error": {"message": "invalid api key"}}'
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=401, body=error_body))
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+
+        assert result.status == 401
+        cp.report_usage.assert_not_called()
+
+    async def test_no_usage_event_without_usage_field(self) -> None:
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=b'{"ok": true}'))
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+
+        cp.report_usage.assert_not_called()
+
+    async def test_no_usage_event_on_non_json_response(self) -> None:
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=b"data: chunk\n\n"))
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+
+        cp.report_usage.assert_not_called()
+
+    async def test_anthropic_usage_shape(self) -> None:
+        body = (
+            b'{"id": "msg_1", "model": "claude-sonnet-4-5",'
+            b' "usage": {"input_tokens": 7, "output_tokens": 21}}'
+        )
+        pipeline, _ = make_pipeline(session=FakeSession(FakeResponse(status=200, body=body)))
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "claude-sonnet-4-5"}'))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["input_tokens"] == 7
+        assert kwargs["output_tokens"] == 21
+
+    async def test_usage_reported_even_when_response_blocked(self) -> None:
+        """The provider billed for the completion even if the proxy blocks
+        the response -- usage must still be accounted."""
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY))
+        )
+        cp = self._cp_client()
+
+        rscanner = MagicMock()
+        rscanner.enabled = True
+        rscanner.scan.return_value = SimpleNamespace(
+            blocked=True, has_detections=True,
+            category="data-leak", signature_id="DL-1", details={},
+        )
+        pipeline._scanner.response_scanner = rscanner
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+
+        assert result.status == 502  # response blocked
+        cp.report_usage.assert_called_once()  # but billing still accounted
+        assert cp.report_usage.call_args.kwargs["input_tokens"] == 12
+
+    async def test_no_parse_when_usage_reporting_disabled(self) -> None:
+        """When usage reporting is off, the response body must not be parsed
+        on the response path (cheap gate before any work)."""
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY))
+        )
+        cp = MagicMock()
+        cp.usage_reporting_enabled = False
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            with patch("aiproxyguard.pipeline.json.loads") as mock_loads:
+                await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+                await asyncio.sleep(0)
+                mock_loads.assert_not_called()
+        cp.report_usage.assert_not_called()

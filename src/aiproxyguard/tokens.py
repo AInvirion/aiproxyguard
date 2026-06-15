@@ -12,11 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Token counting for telemetry cost savings calculation."""
+"""Token accounting.
+
+Two distinct concerns, never to be conflated:
+
+- ``count_tokens()`` is a tiktoken-based ESTIMATE. It is only accurate for the
+  OpenAI models in ``ENCODING_MAP`` and falls back to ``cl100k_base`` for
+  everything else (including Anthropic models, whose tokenizer differs). Use it
+  for telemetry on blocked requests, where no provider-billed count can exist.
+  Never use it for enforcement (budgets, routing thresholds).
+
+- ``billed_tokens()`` extracts the actual token counts the provider reports in
+  the response ``usage`` field. This is what providers bill. Use it for any
+  accounting that feeds dashboards, budgets, or savings math.
+"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 import tiktoken
+
+from aiproxyguard.logging import get_logger
+
+logger = get_logger("tokens")
 
 # Model -> tiktoken encoding mapping
 # OpenAI GPT-4/3.5/embeddings use cl100k_base
@@ -36,9 +56,17 @@ ENCODING_MAP: dict[str, str] = {
 # Cache for encoding objects
 _encoding_cache: dict[str, tiktoken.Encoding] = {}
 
+# Models we've already warned about falling back for (avoid log spam)
+_fallback_warned: set[str] = set()
+
 
 def count_tokens(text: str, model: str | None = None) -> int | None:
-    """Count tokens in text using tiktoken.
+    """ESTIMATE the token count of text using tiktoken.
+
+    Only accurate for OpenAI models present in ENCODING_MAP; all other models
+    (including Anthropic) fall back to cl100k_base and the count is a rough
+    heuristic. Never use this value for enforcement -- see billed_tokens()
+    for provider-billed counts.
 
     Args:
         text: The text to count tokens for.
@@ -46,12 +74,18 @@ def count_tokens(text: str, model: str | None = None) -> int | None:
                Falls back to cl100k_base if unknown.
 
     Returns:
-        Token count, or None if counting fails or text is empty.
+        Estimated token count, or None if counting fails or text is empty.
     """
     if not text:
         return None
 
     try:
+        if model and model not in ENCODING_MAP and model not in _fallback_warned:
+            _fallback_warned.add(model)
+            logger.info(
+                "Token estimate falling back to cl100k_base for unrecognized model",
+                extra={"model": model},
+            )
         encoding_name = ENCODING_MAP.get(model or "", "cl100k_base")
         if encoding_name not in _encoding_cache:
             _encoding_cache[encoding_name] = tiktoken.get_encoding(encoding_name)
@@ -59,3 +93,47 @@ def count_tokens(text: str, model: str | None = None) -> int | None:
         return len(encoding.encode(text))
     except Exception:
         return None
+
+
+@dataclass
+class BilledTokens:
+    """Provider-billed token counts extracted from a response usage field."""
+
+    input_tokens: int
+    output_tokens: int
+
+
+def billed_tokens(response_json: dict[str, Any]) -> BilledTokens | None:
+    """Extract provider-billed token counts from an LLM response body.
+
+    Supports the two dominant usage shapes:
+    - OpenAI-compatible: ``usage.prompt_tokens`` / ``usage.completion_tokens``
+      (also used by Azure OpenAI, OpenRouter, vLLM, Ollama's OpenAI endpoint)
+    - Anthropic: ``usage.input_tokens`` / ``usage.output_tokens``
+
+    Returns None when the response carries no recognizable usage data
+    (errors, streaming chunks, non-chat endpoints) -- callers must treat
+    that as "unknown", never as zero.
+    """
+    usage = response_json.get("usage")
+    if not isinstance(usage, dict):
+        return None
+
+    def _valid(n: object) -> bool:
+        # bool is an int subclass; exclude it. Reject negatives -- a malformed
+        # or buggy upstream must not poison accounting with negative counts.
+        return isinstance(n, int) and not isinstance(n, bool) and n >= 0
+
+    # OpenAI-compatible shape
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if _valid(prompt) and _valid(completion):
+        return BilledTokens(input_tokens=prompt, output_tokens=completion)
+
+    # Anthropic shape
+    inp = usage.get("input_tokens")
+    out = usage.get("output_tokens")
+    if _valid(inp) and _valid(out):
+        return BilledTokens(input_tokens=inp, output_tokens=out)
+
+    return None

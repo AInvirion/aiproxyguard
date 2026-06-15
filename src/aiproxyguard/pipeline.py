@@ -43,7 +43,7 @@ from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
-from aiproxyguard.tokens import count_tokens
+from aiproxyguard.tokens import billed_tokens, count_tokens
 
 logger = get_logger("pipeline")
 
@@ -369,6 +369,10 @@ class RequestPipeline:
                 duration = time.monotonic() - start_time
                 self._metrics.record_request(target.provider, request.method, resp.status, duration)
 
+                # Report billed usage before response scanning: the provider
+                # billed for this completion even if we block the response.
+                self._report_usage(request, response_body, resp.status, duration)
+
                 blocked = await self._scan_response(request, response_body)
                 if blocked is not None:
                     return blocked
@@ -510,6 +514,57 @@ class RequestPipeline:
             # Same rationale: a scanner error must not drop a successful response.
 
         return None
+
+    def _report_usage(
+        self, request: PipelineRequest, response_body: bytes, status: int, duration: float
+    ) -> None:
+        """Report provider-billed token usage for a successfully forwarded request.
+
+        Best-effort and strictly off the client response path: this only
+        schedules a background task. The cheap gate below avoids touching the
+        response body at all when usage reporting is disabled/unregistered, and
+        the body is parsed inside the task (not synchronously here), so a large
+        response never adds parse latency to the request the client is waiting on.
+        """
+        if not (200 <= status < 300):
+            return
+        cp_client = get_client()
+        if cp_client is None or not cp_client.usage_reporting_enabled:
+            return
+
+        asyncio.create_task(
+            self._build_and_report_usage(cp_client, request, response_body, duration)
+        )
+
+    async def _build_and_report_usage(
+        self, cp_client: Any, request: PipelineRequest, response_body: bytes, duration: float
+    ) -> None:
+        """Parse the response usage field and buffer a usage event (background)."""
+        try:
+            response_json = json.loads(response_body)
+        except Exception:
+            return
+        if not isinstance(response_json, dict):
+            return
+
+        billed = billed_tokens(response_json)
+        if billed is None:
+            return
+
+        # The response-reported model is the billed truth (may differ from the
+        # requested alias, e.g. gpt-4o -> gpt-4o-2024-08-06)
+        model = response_json.get("model")
+        if model is not None:
+            model = str(model)[:100]
+
+        await cp_client.report_usage(
+            provider=request.target.provider,
+            endpoint=request.path,
+            model=model,
+            input_tokens=billed.input_tokens,
+            output_tokens=billed.output_tokens,
+            latency_ms=int(duration * 1000),
+        )
 
     def _report_detection(self, **kwargs: Any) -> None:
         """Fire-and-forget detection report to the control plane (if connected)."""

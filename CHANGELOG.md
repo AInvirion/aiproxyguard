@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.53] - 2026-06-14
+
+### Added
+- **Billed-token usage accounting on allowed requests** - the proxy now extracts provider-billed token counts (`usage` field; OpenAI and Anthropic shapes) from upstream responses and reports per-request `usage` telemetry events (provider, endpoint, response model, input/output tokens, latency). Previously token counts existed only for blocked requests, so actual spend was invisible. Usage is reported even when the proxy blocks the response after a billable completion. Best-effort and fully off the client response path: a cheap gate skips all work (including parsing the response body) when usage reporting is disabled or the instance isn't registered, and parsing runs in a background task. Controlled by `control_plane.report_usage` (default `true`, env `AIPROXYGUARD_REPORT_USAGE`). Requires a control plane that accepts `usage` events; against older control planes the events are dropped without affecting detection telemetry.
+- `tokens.billed_tokens()` - provider-billed count extraction (rejects negatives and bools), kept strictly separate from the tiktoken estimate (`count_tokens()`), which is now explicitly documented as telemetry-only and logs once per unrecognized model when falling back to `cl100k_base`.
+
+### Fixed
+- **Telemetry flush could wedge permanently** - the client posted the entire buffer in one request, but the control plane rejects batches over 100 events; a failed flush re-buffered everything, so once the buffer exceeded 100 events telemetry stopped flowing forever. Flushes are now chunked (100 events), permanent rejections (4xx other than 408/429) drop only the affected chunk, transient rejections (408/429) and network/5xx errors re-buffer for retry, and the buffer is capped at 10,000 events (oldest dropped). Usage events are flushed in separate chunks from detection events so a schema rejection can never cost detection telemetry.
+- **Flush no longer holds the buffer lock across network I/O** - with usage events making telemetry high-volume, the prior pattern would stall every concurrent reporter behind one in-flight POST to a slow control plane. The buffer lock is now held only for the buffer mutation; network I/O runs lock-free behind a single-flight guard, and the requeue path is cancellation-safe (the guard is always reset, and a cancelled flush drops its in-flight batch at-most-once rather than double-counting a billing event).
+
 ## [0.2.52] - 2026-06-10
 
 ### Fixed
@@ -240,7 +250,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.52...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.53...HEAD
+[0.2.53]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.52...v0.2.53
 [0.2.52]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.51...v0.2.52
 [0.2.51]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.50...v0.2.51
 [0.2.50]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.48...v0.2.50
