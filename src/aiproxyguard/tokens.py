@@ -119,18 +119,21 @@ def billed_tokens(response_json: dict[str, Any]) -> BilledTokens | None:
     if not isinstance(usage, dict):
         return None
 
-    # OpenAI-compatible shape (bool is an int subclass; exclude it)
+    def _valid(n: object) -> bool:
+        # bool is an int subclass; exclude it. Reject negatives -- a malformed
+        # or buggy upstream must not poison accounting with negative counts.
+        return isinstance(n, int) and not isinstance(n, bool) and n >= 0
+
+    # OpenAI-compatible shape
     prompt = usage.get("prompt_tokens")
     completion = usage.get("completion_tokens")
-    if (isinstance(prompt, int) and not isinstance(prompt, bool)
-            and isinstance(completion, int) and not isinstance(completion, bool)):
+    if _valid(prompt) and _valid(completion):
         return BilledTokens(input_tokens=prompt, output_tokens=completion)
 
     # Anthropic shape
     inp = usage.get("input_tokens")
     out = usage.get("output_tokens")
-    if (isinstance(inp, int) and not isinstance(inp, bool)
-            and isinstance(out, int) and not isinstance(out, bool)):
+    if _valid(inp) and _valid(out):
         return BilledTokens(input_tokens=inp, output_tokens=out)
 
     return None

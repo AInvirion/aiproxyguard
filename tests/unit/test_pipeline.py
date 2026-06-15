@@ -475,3 +475,20 @@ class TestUsageReporting:
         assert result.status == 502  # response blocked
         cp.report_usage.assert_called_once()  # but billing still accounted
         assert cp.report_usage.call_args.kwargs["input_tokens"] == 12
+
+    async def test_no_parse_when_usage_reporting_disabled(self) -> None:
+        """When usage reporting is off, the response body must not be parsed
+        on the response path (cheap gate before any work)."""
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY))
+        )
+        cp = MagicMock()
+        cp.usage_reporting_enabled = False
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            with patch("aiproxyguard.pipeline.json.loads") as mock_loads:
+                await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+                await asyncio.sleep(0)
+                mock_loads.assert_not_called()
+        cp.report_usage.assert_not_called()

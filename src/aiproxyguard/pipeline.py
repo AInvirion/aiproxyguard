@@ -520,16 +520,26 @@ class RequestPipeline:
     ) -> None:
         """Report provider-billed token usage for a successfully forwarded request.
 
-        Best-effort: only fires when the upstream returned 2xx and the response
-        body carries a recognizable usage field. Errors and streaming responses
-        produce no event (unknown is never reported as zero).
+        Best-effort and strictly off the client response path: this only
+        schedules a background task. The cheap gate below avoids touching the
+        response body at all when usage reporting is disabled/unregistered, and
+        the body is parsed inside the task (not synchronously here), so a large
+        response never adds parse latency to the request the client is waiting on.
         """
         if not (200 <= status < 300):
             return
         cp_client = get_client()
-        if cp_client is None:
+        if cp_client is None or not cp_client.usage_reporting_enabled:
             return
 
+        asyncio.create_task(
+            self._build_and_report_usage(cp_client, request, response_body, duration)
+        )
+
+    async def _build_and_report_usage(
+        self, cp_client: Any, request: PipelineRequest, response_body: bytes, duration: float
+    ) -> None:
+        """Parse the response usage field and buffer a usage event (background)."""
         try:
             response_json = json.loads(response_body)
         except Exception:
@@ -547,14 +557,14 @@ class RequestPipeline:
         if model is not None:
             model = str(model)[:100]
 
-        asyncio.create_task(cp_client.report_usage(
+        await cp_client.report_usage(
             provider=request.target.provider,
             endpoint=request.path,
             model=model,
             input_tokens=billed.input_tokens,
             output_tokens=billed.output_tokens,
             latency_ms=int(duration * 1000),
-        ))
+        )
 
     def _report_detection(self, **kwargs: Any) -> None:
         """Fire-and-forget detection report to the control plane (if connected)."""

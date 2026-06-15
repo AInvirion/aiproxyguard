@@ -124,3 +124,10 @@ class TestBilledTokens:
         assert result is not None
         assert result.input_tokens == 0
         assert result.output_tokens == 0
+
+
+class TestBilledTokensNegative:
+    def test_negative_rejected(self):
+        from aiproxyguard.tokens import billed_tokens
+        assert billed_tokens({"usage": {"prompt_tokens": -1, "completion_tokens": 5}}) is None
+        assert billed_tokens({"usage": {"input_tokens": 3, "output_tokens": -2}}) is None

@@ -574,7 +574,7 @@ class TestUsageReporting:
         async def noop_flush():
             return None
 
-        client._flush_telemetry_unlocked = noop_flush  # type: ignore[method-assign]
+        client._flush_telemetry = noop_flush  # type: ignore[method-assign]
 
         await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
 
@@ -687,3 +687,93 @@ class TestMixedBatchIsolation:
         await client._flush_telemetry()
 
         assert len(client._telemetry_buffer) == 2  # retained for retry
+
+
+class TestFlushCancellationSafety:
+    @pytest.mark.asyncio
+    async def test_cancel_mid_flush_resets_flushing_without_duplicating(self):
+        """Cancelling a flush mid-network-IO must reset _flushing (no wedge)
+        and must NOT requeue the in-flight batch -- at-most-once, so an
+        already-sent billing event is never double-counted on shutdown."""
+        import asyncio
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="prompt-injection"),
+            TelemetryEvent(event_type="usage", category="usage"),
+        ]
+
+        started = asyncio.Event()
+
+        async def hang(*args, **kwargs):
+            started.set()
+            await asyncio.sleep(3600)  # never completes; will be cancelled
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=hang)
+
+        task = asyncio.create_task(client._flush_telemetry())
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert client._flushing is False  # not wedged
+        # In-flight batch dropped on hard cancel (at-most-once), not requeued
+        assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_requeue_on_transient_failure_respects_buffer_cap(self):
+        from aiproxyguard.control_plane import TELEMETRY_BUFFER_MAX
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [
+            TelemetryEvent(event_type="block", category="x")
+            for _ in range(TELEMETRY_BUFFER_MAX)
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 429  # transient -> whole batch requeued
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        assert len(client._telemetry_buffer) <= TELEMETRY_BUFFER_MAX
+
+    @pytest.mark.asyncio
+    async def test_single_flight_guard_prevents_concurrent_flush(self):
+        import asyncio
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client._telemetry_buffer = [TelemetryEvent(event_type="block", category="x")]
+
+        release = asyncio.Event()
+        post_calls = 0
+
+        async def slow_post(*args, **kwargs):
+            nonlocal post_calls
+            post_calls += 1
+            await release.wait()
+            resp = AsyncMock()
+            resp.status_code = 201
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=slow_post)
+
+        t1 = asyncio.create_task(client._flush_telemetry())
+        await asyncio.sleep(0.05)  # let t1 enter the flush and start the post
+        # Second flush should no-op via the single-flight guard
+        await client._flush_telemetry()
+        release.set()
+        await t1
+
+        assert post_calls == 1
