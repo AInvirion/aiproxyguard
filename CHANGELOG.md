@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.54] - 2026-06-16
 
 ### Added
 - **Anthropic prompt-cache injection (first token-saving feature)** — for Anthropic Messages-API requests, the proxy injects `cache_control: {type: ephemeral}` into the top-level `system` prompt (rewriting the string form into a content block), so Anthropic bills that prefix at the cached-token discount on repeat requests. Opt-in via `cost_optimization.anthropic_prompt_cache` (default off; env `AIPROXYGUARD_ANTHROPIC_PROMPT_CACHE`) and runtime-toggleable from the control plane via the `cost_optimization` config section. Runs as a pipeline body mutator (parse → mutate → serialize → scan → forward), so the scanner inspects the exact mutated bytes forwarded. Phase-1 scope: only a top-level `system` string on the `/v1/messages` endpoint; non-Anthropic requests, other Anthropic endpoints, and the array/content-block `system` form are left untouched. Fail-open: parse failures forward the original bytes unchanged.
@@ -258,7 +258,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Signatures cryptographically verified
 - Manifest sequence numbers prevent rollback attacks
 
-[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.53...HEAD
+[Unreleased]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.54...HEAD
+[0.2.54]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.53...v0.2.54
 [0.2.53]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.52...v0.2.53
 [0.2.52]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.51...v0.2.52
 [0.2.51]: https://github.com/AInvirion/aiproxyguard/compare/v0.2.50...v0.2.51
