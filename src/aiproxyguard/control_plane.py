@@ -167,6 +167,25 @@ class TelemetryEvent:
 TELEMETRY_FLUSH_BATCH_SIZE = 100
 TELEMETRY_BUFFER_MAX = 10_000
 
+# Top-level keys of the pushed policy config that are consumed by the
+# policy/detection translation (_translate_policy_config), not by a section
+# handler. Listed so the dispatcher doesn't flag them as "unknown".
+# NB: only keys _translate_policy_config actually reads belong here. A
+# top-level "default_action" is intentionally NOT listed: the translation
+# recomputes default_action from detection/categories and never reads a
+# top-level one, so if the cloud ever pushed it we want the unknown-section
+# warning to surface that drift rather than silently suppress it.
+POLICY_CONFIG_SECTIONS = frozenset(
+    {"detection", "categories", "thresholds", "allowlists"}
+)
+
+# Sections that are boot-time only (upstreams, TLS, etc.). If the control plane
+# pushes one, it cannot be applied at runtime -- it's ignored quietly rather
+# than warned about, to distinguish it from a genuinely unrecognized section.
+BOOT_ONLY_CONFIG_SECTIONS = frozenset(
+    {"server", "upstreams", "tls", "control_plane", "signatures", "metrics", "identity"}
+)
+
 
 class ControlPlaneClient:
     """Client for communicating with the AIProxyGuard control plane."""
@@ -194,13 +213,17 @@ class ControlPlaneClient:
         self._last_config_version: int = 0
         self._last_signature_version: str = ""
         self._tier: str = "free"  # Updated from heartbeat response
+        # Policy/detection and signatures/ML-model are special: the first runs a
+        # whole-config translation, the latter two are driven by separate flows
+        # (not the runtime config section dispatch).
         self._policy_update_callback: Callable[[dict], None] | None = None
         self._signature_update_callback: Callable[[SignatureSet], None] | None = None
         self._ml_model_callback: Callable[[bytes, dict], None] | None = None
-        self._logging_update_callback: Callable[[dict], None] | None = None
-        self._scanner_update_callback: Callable[[dict], None] | None = None
-        self._ml_config_update_callback: Callable[[dict], None] | None = None
-        self._security_update_callback: Callable[[dict], None] | None = None
+        # Runtime config-section registry: section name -> handler(raw_section).
+        # Adding support for a new pushed section (routing, cache, budget, ...)
+        # is a single register_section_handler() call -- the dispatcher in
+        # _fetch_and_apply_policy needs no changes.
+        self._section_handlers: dict[str, Callable[[dict], None]] = {}
         self._manifest_verifier = manifest_verifier or get_verifier()
         # Signature bundle tracking
         self._bundle_licenses: dict[str, dict] = {}  # bundle_id -> license_data
@@ -247,18 +270,38 @@ class ControlPlaneClient:
         """
         self._ml_model_callback = callback
 
+    def register_section_handler(
+        self, section: str, handler: Callable[[dict], None]
+    ) -> None:
+        """Register a handler for a runtime config section pushed by the control
+        plane.
+
+        Adding support for a new pushed section (e.g. ``routing``, ``cache``,
+        ``budget``, ``cost_optimization``) is a single call here -- the
+        dispatcher in ``_fetch_and_apply_policy`` iterates the registry, so no
+        per-feature branch needs to be added there. The handler receives the
+        raw section dict and is responsible for its own validation; if it
+        raises, that section is skipped and its previous value is kept while
+        other sections still apply.
+
+        Sections are applied in registration order, but handlers are expected
+        to be independent of each other -- do not rely on another section
+        having been applied first.
+        """
+        self._section_handlers[section] = handler
+
     def set_logging_update_callback(self, callback: Callable[[dict], None]) -> None:
-        """Set callback for logging config updates.
+        """Set callback for logging config updates (``logging`` section).
 
         The callback will be invoked with logging config dict containing:
         - level: Log level (debug, info, warning, error)
         - format: Log format (json, text)
         - redact_keys: Whether to redact sensitive keys
         """
-        self._logging_update_callback = callback
+        self.register_section_handler("logging", callback)
 
     def set_scanner_update_callback(self, callback: Callable[[dict], None]) -> None:
-        """Set callback for scanner config updates.
+        """Set callback for scanner config updates (``scanner`` section).
 
         The callback will be invoked with scanner config dict containing:
         - enabled: Master enable/disable
@@ -266,25 +309,25 @@ class ControlPlaneClient:
         - heuristics: Enable heuristics scanning
         - ml_classifier: Enable ML classifier
         """
-        self._scanner_update_callback = callback
+        self.register_section_handler("scanner", callback)
 
     def set_ml_config_update_callback(self, callback: Callable[[dict], None]) -> None:
-        """Set callback for ML classifier config updates.
+        """Set callback for ML classifier config updates (``ml_classifier`` section).
 
         The callback will be invoked with ML config dict containing:
         - threshold: Confidence threshold (0.0-1.0)
         - action: Action on detection (block, warn, log)
         """
-        self._ml_config_update_callback = callback
+        self.register_section_handler("ml_classifier", callback)
 
     def set_security_update_callback(self, callback: Callable[[dict], None]) -> None:
-        """Set callback for security config updates.
+        """Set callback for security config updates (``security`` section).
 
         The callback will be invoked with security config dict containing:
         - failure_mode: Failure mode (open, closed)
         - scanner_timeout_ms: Scanner timeout in milliseconds
         """
-        self._security_update_callback = callback
+        self.register_section_handler("security", callback)
 
     def set_initial_signature_version(self, version: str) -> None:
         """Set the initial signature version from bundled signatures.
@@ -572,63 +615,71 @@ class ControlPlaneClient:
             )
 
             config = policy_data.get("config", {})
+            if not isinstance(config, dict):
+                logger.warning("Policy config is not an object; ignoring")
+                return
 
-            # Apply policy/detection settings
+            # Apply policy/detection settings (special-cased: the policy callback
+            # receives a translation of the whole config, not a single section).
             if self._policy_update_callback:
-                translated = self._translate_policy_config(config)
-                self._policy_update_callback(translated)
-                # Log detection settings detail from translated config
-                for category, settings in translated.get("categories", {}).items():
+                try:
+                    translated = self._translate_policy_config(config)
+                    self._policy_update_callback(translated)
+                    for category, settings in translated.get("categories", {}).items():
+                        logger.info(
+                            f"Detection rule applied: {category}",
+                            extra={
+                                "category": category,
+                                "action": settings.get("action", "block"),
+                                "threshold": settings.get("threshold", 0.5),
+                            },
+                        )
                     logger.info(
-                        f"Detection rule applied: {category}",
+                        "Policy engine updated",
                         extra={
-                            "category": category,
-                            "action": settings.get("action", "block"),
-                            "threshold": settings.get("threshold", 0.5),
+                            "default_action": translated.get("default_action"),
+                            "category_count": len(translated.get("categories", {})),
                         },
                     )
-                logger.info(
-                    "Policy engine updated",
-                    extra={
-                        "default_action": translated.get("default_action"),
-                        "category_count": len(translated.get("categories", {})),
-                    },
-                )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to apply policy/detection config; keeping previous: {e}"
+                    )
 
-            # Apply logging settings
-            logging_config = config.get("logging")
-            if logging_config and self._logging_update_callback:
-                self._logging_update_callback(logging_config)
-                logger.info(
-                    "Logging config updated",
-                    extra={"config": logging_config},
-                )
+            # Dispatch every other config section through the registry. Adding a
+            # new section is a register_section_handler() call -- no edit here.
+            # Each section is isolated: a handler that raises skips only its own
+            # section (its previous value stays in effect) and does not abort the
+            # rest of the config apply.
+            for section, handler in self._section_handlers.items():
+                section_config = config.get(section)
+                if not section_config:
+                    continue
+                try:
+                    handler(section_config)
+                    logger.info(
+                        "Config section applied",
+                        extra={"section": section},
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to apply '{section}' config section; "
+                        f"keeping previous value: {e}"
+                    )
 
-            # Apply scanner settings
-            scanner_config = config.get("scanner")
-            if scanner_config and self._scanner_update_callback:
-                self._scanner_update_callback(scanner_config)
-                logger.info(
-                    "Scanner config updated",
-                    extra={"config": scanner_config},
-                )
-
-            # Apply ML classifier settings
-            ml_config = config.get("ml_classifier")
-            if ml_config and self._ml_config_update_callback:
-                self._ml_config_update_callback(ml_config)
-                logger.info(
-                    "ML classifier config updated",
-                    extra={"config": ml_config},
-                )
-
-            # Apply security settings
-            security_config = config.get("security")
-            if security_config and self._security_update_callback:
-                self._security_update_callback(security_config)
-                logger.info(
-                    "Security config updated",
-                    extra={"config": security_config},
+            # Surface sections we received but cannot apply, so cloud/runtime
+            # drift is visible instead of silently dropped.
+            known = (
+                POLICY_CONFIG_SECTIONS
+                | set(self._section_handlers)
+                | BOOT_ONLY_CONFIG_SECTIONS
+            )
+            for section in config:
+                if section in known:
+                    continue
+                logger.warning(
+                    "Ignoring unrecognized control-plane config section",
+                    extra={"section": section},
                 )
 
         except httpx.HTTPError as e:

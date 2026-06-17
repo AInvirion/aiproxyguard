@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Control-plane config sections are now dispatched through a registry** instead of a hardcoded per-section block. Adding a new pushed config section (e.g. `routing`, `cache`, `budget`, `cost_optimization`) is a single `register_section_handler()` call — the dispatcher in `_fetch_and_apply_policy` needs no changes. Each section is applied in isolation (a handler that raises skips only its own section and keeps its previous value, rather than aborting the whole config apply), unrecognized sections are logged with a warning instead of being silently dropped, and boot-only sections (upstreams, TLS, etc.) are ignored quietly. The existing typed setters (`set_logging_update_callback`, etc.) are now thin wrappers over the registry, so behavior is unchanged. Unblocks the cost-optimization feature group (prompt caching, model routing, response caching, token budgets), each of which needs its own config section pushed from the control plane.
+
 ## [0.2.53] - 2026-06-14
 
 ### Added
