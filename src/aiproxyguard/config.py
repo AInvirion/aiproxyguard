@@ -181,6 +181,22 @@ class CostOptimizationConfig:
 
 
 @dataclass
+class RoutingConfig:
+    """Smart model-routing config (#305), pushed via the ``routing`` section.
+
+    ``tasks`` maps a task name to its served config: an ``ordered_pool``
+    (cheapest-first, already resolved by the control plane) and an optional
+    ``fallback`` list. ``downgrades`` and ``dry_run`` drive phase-1b transparent
+    downgrades (consumed in a later phase); ``dry_run`` defaults True so a
+    transparent downgrade never rewrites a model until explicitly enabled.
+    """
+
+    tasks: dict[str, Any] = field(default_factory=dict)
+    downgrades: list[Any] = field(default_factory=list)
+    dry_run: bool = True
+
+
+@dataclass
 class Config:
     """Root configuration."""
 
@@ -197,6 +213,7 @@ class Config:
     tls: TLSConfig = field(default_factory=TLSConfig)
     identity: IdentityConfig = field(default_factory=IdentityConfig)
     cost_optimization: CostOptimizationConfig = field(default_factory=CostOptimizationConfig)
+    routing: RoutingConfig = field(default_factory=RoutingConfig)
 
 
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
@@ -388,6 +405,13 @@ def load_config(path: str) -> Config:
         ),
     )
 
+    routing_data = data.get("routing", {}) or {}
+    routing = RoutingConfig(
+        tasks=routing_data.get("tasks", {}) or {},
+        downgrades=routing_data.get("downgrades", []) or [],
+        dry_run=_to_bool(routing_data.get("dry_run", True), default=True),
+    )
+
     return Config(
         server=server,
         upstreams=upstreams,
@@ -402,4 +426,5 @@ def load_config(path: str) -> Config:
         tls=tls,
         identity=identity,
         cost_optimization=cost_optimization,
+        routing=routing,
     )

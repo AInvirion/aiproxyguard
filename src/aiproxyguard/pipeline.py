@@ -42,6 +42,14 @@ from aiproxyguard.control_plane import get_client
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.policy import PolicyEngine
+from aiproxyguard.routing import (
+    ROUTED_MODEL_HEADER,
+    capability_ok,
+    parse_router_task,
+    rewrite_model,
+    sanitize_header_value,
+    select_route,
+)
 from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.tokens import billed_tokens, count_tokens
 
@@ -98,6 +106,11 @@ class PipelineRequest:
     body: bytes
     client_id: str
     target: UpstreamTarget
+    # Headers to add to the response, written during request processing (e.g.
+    # the smart-routing decision). Merged into the response headers in _forward.
+    response_annotations: dict[str, str] = field(default_factory=dict)
+    # Ordered fallback models to try on an upstream 5xx (set by routing).
+    routing_retry: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -162,8 +175,13 @@ class RequestPipeline:
         self._mutators.append(mutator)
 
     async def process(self, request: PipelineRequest) -> PipelineResult:
-        """Run a request through mutate -> scan -> forward -> scan response."""
-        start_time = time.monotonic()
+        """Run a request through route -> mutate -> scan -> forward -> scan response."""
+        # Resolve an explicit router:<task> alias before anything else: it may
+        # rewrite request.body (the model field), set the routing retry plan,
+        # and annotate the response -- or fail closed with a 400.
+        routing_error = self._resolve_routing_alias(request)
+        if routing_error is not None:
+            return routing_error
 
         outbound = self._apply_mutations(request)
 
@@ -171,7 +189,71 @@ class RequestPipeline:
         if blocked is not None:
             return blocked
 
-        return await self._forward(request, outbound, start_time)
+        return await self._forward(request, outbound)
+
+    def _resolve_routing_alias(self, request: PipelineRequest) -> PipelineResult | None:
+        """Resolve a ``model: "router:<task>"`` alias to a concrete model.
+
+        Mutates ``request.body`` (model field), sets ``request.routing_retry``
+        (the ordered 5xx fallback plan), and annotates the response with the
+        chosen model. Fail-closed: an unknown task or an empty pool returns a
+        400 rather than forwarding a bogus ``router:*`` model upstream. A
+        non-router request (or unparseable body) is a no-op (returns None).
+        """
+        routing = self._config.routing
+        if not routing.tasks or not request.body:
+            return None
+        try:
+            body_json = json.loads(request.body)
+        except Exception:
+            return None
+        if not isinstance(body_json, dict):
+            return None
+
+        task_name = parse_router_task(body_json.get("model"))
+        if task_name is None:
+            return None
+
+        task_cfg = routing.tasks.get(task_name)
+        if not isinstance(task_cfg, dict):
+            self._metrics.record_routing("alias", "unknown_task")
+            logger.warning(
+                "Unknown router task; rejecting",
+                extra={"task": task_name, "client_id": request.client_id},
+            )
+            return _json_result(400, {
+                "error": {
+                    "type": "unknown_router_task",
+                    "message": f"Unknown router task: {task_name}",
+                }
+            })
+
+        decision = select_route(task_cfg, capability_ok(body_json))
+        if decision is None:
+            self._metrics.record_routing("alias", "no_route")
+            return _json_result(400, {
+                "error": {
+                    "type": "no_route",
+                    "message": f"No model configured for router task: {task_name}",
+                }
+            })
+
+        body_json["model"] = decision.chosen
+        request.body = json.dumps(body_json).encode()
+        request.routing_retry = decision.retry_plan
+        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(
+            decision.chosen
+        )
+        self._metrics.record_routing("alias", "routed")
+        logger.info(
+            "Routed request via task alias",
+            extra={
+                "task": task_name,
+                "model": decision.chosen,
+                "client_id": request.client_id,
+            },
+        )
+        return None
 
     def _apply_mutations(self, request: PipelineRequest) -> bytes:
         """Apply registered body mutators and return the outbound bytes.
@@ -321,80 +403,146 @@ class RequestPipeline:
         return None
 
     async def _forward(
-        self, request: PipelineRequest, outbound: bytes, start_time: float
+        self, request: PipelineRequest, outbound: bytes
     ) -> PipelineResult:
-        """Forward the outbound bytes upstream and scan the response."""
+        """Forward the outbound bytes upstream and scan the response.
+
+        When routing populated ``request.routing_retry``, an upstream 5xx (or a
+        connection error) retries the next model in the plan (remaining pool,
+        then fallback). Usage reporting and response scanning run only on the
+        final served response; intermediate 5xx bodies are never scanned. The
+        retry count is bounded by the plan length, and a 4xx is never retried.
+        """
         config = self._config
         target = request.target
-        try:
-            session = self._session_getter()
-            headers = self._build_forward_headers(request)
+        retry_models = list(request.routing_retry)
+        attempt_body = outbound
 
-            async with session.request(
-                method=request.method,
-                url=target.url,
-                headers=headers,
-                data=outbound if outbound else None,
-                timeout=aiohttp.ClientTimeout(total=target.timeout),
-            ) as resp:
-                # Check response size limit before reading
-                upstream_content_length = resp.content_length
-                if upstream_content_length is not None and upstream_content_length > config.security.max_response_size:
-                    logger.warning(
-                        "Response too large",
-                        extra={
-                            "content_length": upstream_content_length,
-                            "limit": config.security.max_response_size,
-                        },
+        while True:
+            attempt_start = time.monotonic()
+            try:
+                session = self._session_getter()
+                headers = self._build_forward_headers(request)
+
+                async with session.request(
+                    method=request.method,
+                    url=target.url,
+                    headers=headers,
+                    data=attempt_body if attempt_body else None,
+                    timeout=aiohttp.ClientTimeout(total=target.timeout),
+                ) as resp:
+                    # Check response size limit before reading
+                    upstream_content_length = resp.content_length
+                    if upstream_content_length is not None and upstream_content_length > config.security.max_response_size:
+                        logger.warning(
+                            "Response too large",
+                            extra={
+                                "content_length": upstream_content_length,
+                                "limit": config.security.max_response_size,
+                            },
+                        )
+                        return _json_result(502, {
+                            "error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}
+                        })
+
+                    response_body = await resp.read()
+
+                    # Also check actual size in case Content-Length was missing/wrong
+                    if len(response_body) > config.security.max_response_size:
+                        logger.warning(
+                            "Response too large (after read)",
+                            extra={
+                                "size": len(response_body),
+                                "limit": config.security.max_response_size,
+                            },
+                        )
+                        return _json_result(502, {
+                            "error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}
+                        })
+
+                    # Retry on upstream 5xx if the routing plan has another model.
+                    next_body = self._next_routing_attempt(
+                        request, attempt_body, retry_models
+                    ) if 500 <= resp.status < 600 else None
+                    if next_body is not None:
+                        self._metrics.record_request(
+                            target.provider, request.method, resp.status,
+                            time.monotonic() - attempt_start,
+                        )
+                        logger.warning(
+                            "Upstream 5xx; retrying next routed model",
+                            extra={"status": resp.status, "provider": target.provider},
+                        )
+                        # Preserve the invariant that the scanner inspects the
+                        # exact bytes forwarded: rescan the rewritten body.
+                        blocked = await self._scan_request(request, next_body)
+                        if blocked is not None:
+                            return blocked
+                        attempt_body = next_body
+                        continue
+
+                    duration = time.monotonic() - attempt_start
+                    self._metrics.record_request(target.provider, request.method, resp.status, duration)
+
+                    # Report billed usage before response scanning: the provider
+                    # billed for this completion even if we block the response.
+                    self._report_usage(request, response_body, resp.status, duration)
+
+                    blocked = await self._scan_response(request, response_body)
+                    if blocked is not None:
+                        return blocked
+
+                    response_headers = {
+                        header: resp.headers[header]
+                        for header in RESPONSE_HEADERS
+                        if header in resp.headers
+                    }
+                    # Surface request-processing annotations (e.g. routed model).
+                    response_headers.update(request.response_annotations)
+                    return PipelineResult(
+                        status=resp.status,
+                        body=response_body,
+                        headers=response_headers,
+                        reason=resp.reason,
                     )
-                    return _json_result(502, {
-                        "error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}
-                    })
-
-                response_body = await resp.read()
-
-                # Also check actual size in case Content-Length was missing/wrong
-                if len(response_body) > config.security.max_response_size:
+            except aiohttp.ClientError as e:
+                next_body = self._next_routing_attempt(request, attempt_body, retry_models)
+                if next_body is not None:
                     logger.warning(
-                        "Response too large (after read)",
-                        extra={
-                            "size": len(response_body),
-                            "limit": config.security.max_response_size,
-                        },
+                        "Upstream connection error; retrying next routed model",
+                        extra={"provider": target.provider, "error": str(e)},
                     )
-                    return _json_result(502, {
-                        "error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}
-                    })
+                    blocked = await self._scan_request(request, next_body)
+                    if blocked is not None:
+                        return blocked
+                    attempt_body = next_body
+                    continue
+                duration = time.monotonic() - attempt_start
+                self._metrics.record_request(target.provider, request.method, 502, duration)
+                logger.error(f"Upstream error: {e}")
+                return _json_result(502, {
+                    "error": {"type": "upstream_error", "message": str(e)}
+                })
 
-                duration = time.monotonic() - start_time
-                self._metrics.record_request(target.provider, request.method, resp.status, duration)
+    def _next_routing_attempt(
+        self, request: PipelineRequest, attempt_body: bytes, retry_models: list[str]
+    ) -> bytes | None:
+        """Pop the next fallback model and return the rewritten body, or None.
 
-                # Report billed usage before response scanning: the provider
-                # billed for this completion even if we block the response.
-                self._report_usage(request, response_body, resp.status, duration)
-
-                blocked = await self._scan_response(request, response_body)
-                if blocked is not None:
-                    return blocked
-
-                response_headers = {
-                    header: resp.headers[header]
-                    for header in RESPONSE_HEADERS
-                    if header in resp.headers
-                }
-                return PipelineResult(
-                    status=resp.status,
-                    body=response_body,
-                    headers=response_headers,
-                    reason=resp.reason,
-                )
-        except aiohttp.ClientError as e:
-            duration = time.monotonic() - start_time
-            self._metrics.record_request(target.provider, request.method, 502, duration)
-            logger.error(f"Upstream error: {e}")
-            return _json_result(502, {
-                "error": {"type": "upstream_error", "message": str(e)}
-            })
+        Returns None when no fallback model remains or the body can't be
+        rewritten (so the caller treats the current response as final).
+        """
+        if not retry_models:
+            return None
+        next_model = retry_models.pop(0)
+        rewritten = rewrite_model(attempt_body, next_model)
+        if rewritten is None:
+            return None
+        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(
+            next_model
+        )
+        self._metrics.record_routing("alias", "fallback")
+        return rewritten
 
     def _build_forward_headers(self, request: PipelineRequest) -> dict[str, str]:
         """Select headers to forward upstream, including exactly one auth header."""

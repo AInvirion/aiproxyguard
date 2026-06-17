@@ -54,6 +54,13 @@ DETECTIONS_TOTAL = Counter(
     ["category", "action"],
 )
 
+# Routing metrics (#305)
+ROUTING_DECISIONS_TOTAL = Counter(
+    "aiproxyguard_routing_decisions_total",
+    "Total smart-routing decisions",
+    ["mode", "result"],
+)
+
 # Signature metrics
 SIGNATURES_LOADED = Gauge(
     "aiproxyguard_signatures_loaded",
@@ -76,6 +83,7 @@ class MetricsCollector:
         self._request_counts: dict[tuple[str, str, int], int] = {}
         self._scan_counts: dict[tuple[str, str], int] = {}
         self._detection_counts: dict[tuple[str, str], int] = {}
+        self._routing_counts: dict[tuple[str, str], int] = {}
 
     def record_request(
         self,
@@ -103,6 +111,17 @@ class MetricsCollector:
 
         key = (scanner, result)
         self._scan_counts[key] = self._scan_counts.get(key, 0) + 1
+
+    def record_routing(self, mode: str, result: str) -> None:
+        """Record a smart-routing decision.
+
+        mode: "alias" (explicit router:<task>) or "downgrade" (transparent).
+        result: e.g. "routed", "unknown_task", "no_route", "fallback",
+                "dry_run", "skipped".
+        """
+        ROUTING_DECISIONS_TOTAL.labels(mode=mode, result=result).inc()
+        key = (mode, result)
+        self._routing_counts[key] = self._routing_counts.get(key, 0) + 1
 
     def record_detection(
         self,
