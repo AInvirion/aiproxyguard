@@ -103,6 +103,10 @@ class TLSInterceptProxy:
             metrics=metrics,
             session_getter=self._get_session,
         )
+        # Same cost-optimization mutators as the HTTP path (gated on live config)
+        from aiproxyguard.server import register_cost_optimization_mutators
+
+        register_cost_optimization_mutators(self._pipeline, config)
 
     def _build_host_map(self, config: "Config") -> dict[str, tuple[str, object]]:
         """Map upstream hostnames to (provider name, upstream config)."""

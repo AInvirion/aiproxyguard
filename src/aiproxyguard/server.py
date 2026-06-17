@@ -38,8 +38,22 @@ from aiproxyguard.signatures.loader import load_signatures, get_signature_versio
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.logging import get_logger, update_logging
 from aiproxyguard.control_plane import init_client, get_client
+from aiproxyguard.config import _to_bool
+from aiproxyguard.cost_optimization import make_cache_control_mutator
 
 logger = get_logger("server")
+
+
+def register_cost_optimization_mutators(
+    pipeline: RequestPipeline, config: "Config"
+) -> None:
+    """Register cost-optimization body mutators on a pipeline.
+
+    Shared by both transports so the mutator set stays identical. The mutators
+    are gated on live config flags (default off), so registering them
+    unconditionally is safe -- they no-op until the feature is enabled.
+    """
+    pipeline.add_mutator(make_cache_control_mutator(config))
 
 
 def register_control_plane_callbacks(
@@ -112,6 +126,25 @@ def register_control_plane_callbacks(
 
     cp_client.set_security_update_callback(on_security_update)
 
+    # Cost-optimization config (runtime toggle for the cache/routing features).
+    # Registered through the section-handler registry so the cloud can enable or
+    # disable it without a restart; the pipeline mutator reads the live flag.
+    def on_cost_optimization_update(cost_config: dict[str, Any]) -> None:
+        if "anthropic_prompt_cache" in cost_config:
+            # Use _to_bool (same as boot parsing): a string "false"/"0" pushed
+            # by the control plane must disable, not enable (bool("false")==True).
+            config.cost_optimization.anthropic_prompt_cache = _to_bool(
+                cost_config["anthropic_prompt_cache"], default=False
+            )
+            logger.info(
+                "Cost-optimization config updated",
+                extra={
+                    "anthropic_prompt_cache": config.cost_optimization.anthropic_prompt_cache
+                },
+            )
+
+    cp_client.register_section_handler("cost_optimization", on_cost_optimization_update)
+
     # Set initial signature version from bundled signatures
     initial_sig_version = get_signature_version(config.signatures.path)
     if initial_sig_version:
@@ -121,13 +154,15 @@ def register_control_plane_callbacks(
 async def on_startup(app: web.Application) -> None:
     """Create shared HTTP session and start control plane client."""
     app["http_session"] = aiohttp.ClientSession()
-    app["pipeline"] = RequestPipeline(
+    pipeline = RequestPipeline(
         config=app["config"],
         scanner=app["scanner"],
         policy=app["policy"],
         metrics=app["metrics"],
         session_getter=lambda: app["http_session"],
     )
+    register_cost_optimization_mutators(pipeline, app["config"])
+    app["pipeline"] = pipeline
 
     # Start control plane client
     cp_client = get_client()

@@ -52,9 +52,15 @@ class FakeSignatures:
 
 
 @dataclass
+class FakeCostOpt:
+    anthropic_prompt_cache: bool = False
+
+
+@dataclass
 class FakeConfig:
     security: FakeSecurity = field(default_factory=FakeSecurity)
     signatures: FakeSignatures = field(default_factory=FakeSignatures)
+    cost_optimization: FakeCostOpt = field(default_factory=FakeCostOpt)
 
 
 def _register(on_signatures_reloaded=None) -> MagicMock:
@@ -116,3 +122,38 @@ class TestCallbackRegistration:
         new_sigs = MagicMock()
         new_sigs.signatures = []
         sig_cb(new_sigs)  # must not raise
+
+
+class TestCostOptimizationHandler:
+    """The cost_optimization section handler must coerce string booleans (a
+    pushed "false"/"0" must disable, not enable via bool()-truthiness)."""
+
+    def _cost_handler(self, cfg):
+        cp_client = MagicMock()
+        register_control_plane_callbacks(
+            cp_client, scanner=MagicMock(), policy=MagicMock(),
+            config=cfg, metrics=MagicMock(),
+        )
+        # pull the handler registered for the "cost_optimization" section
+        for call in cp_client.register_section_handler.call_args_list:
+            if call.args and call.args[0] == "cost_optimization":
+                return call.args[1]
+        raise AssertionError("cost_optimization handler not registered")
+
+    def test_string_false_disables(self):
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(anthropic_prompt_cache=True))
+        handler = self._cost_handler(cfg)
+        handler({"anthropic_prompt_cache": "false"})
+        assert cfg.cost_optimization.anthropic_prompt_cache is False
+
+    def test_string_true_enables(self):
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(anthropic_prompt_cache=False))
+        handler = self._cost_handler(cfg)
+        handler({"anthropic_prompt_cache": "true"})
+        assert cfg.cost_optimization.anthropic_prompt_cache is True
+
+    def test_real_bool_true_enables(self):
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(anthropic_prompt_cache=False))
+        handler = self._cost_handler(cfg)
+        handler({"anthropic_prompt_cache": True})
+        assert cfg.cost_optimization.anthropic_prompt_cache is True

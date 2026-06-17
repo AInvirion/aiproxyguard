@@ -492,3 +492,43 @@ class TestUsageReporting:
                 await asyncio.sleep(0)
                 mock_loads.assert_not_called()
         cp.report_usage.assert_not_called()
+
+
+class TestMutatorScannerCoherence:
+    """An Anthropic cache mutator must run before scanning, and the scanner +
+    the forwarded bytes must both see the mutated body (the #310 invariant)."""
+
+    async def test_cache_injection_seen_by_scanner_and_forwarded(self) -> None:
+        from aiproxyguard.cost_optimization import inject_anthropic_cache_control
+
+        pipeline, session = make_pipeline()
+        pipeline.add_mutator(inject_anthropic_cache_control)
+
+        request = make_request(
+            b'{"model": "claude-sonnet-4-5", "system": "You are helpful."}'
+        )
+        request.target.provider = "anthropic"
+        request.target.url = "https://api.anthropic.com/v1/messages"
+
+        await pipeline.process(request)
+
+        # scanner saw the mutated payload...
+        scanned = pipeline._scanner.scan_async.call_args[0][0]
+        assert "cache_control" in scanned
+        # ...and the exact same bytes were forwarded upstream
+        forwarded = session.calls[0]["data"]
+        assert scanned.encode() == forwarded
+        body = json.loads(forwarded)
+        assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    async def test_non_anthropic_request_unchanged(self) -> None:
+        from aiproxyguard.cost_optimization import inject_anthropic_cache_control
+
+        pipeline, session = make_pipeline()
+        pipeline.add_mutator(inject_anthropic_cache_control)
+
+        original = b'{"model": "gpt-4o", "system": "You are helpful."}'
+        await pipeline.process(make_request(original))  # provider=openai by default
+
+        # untouched: forwarded byte-identical to the original
+        assert session.calls[0]["data"] == original
