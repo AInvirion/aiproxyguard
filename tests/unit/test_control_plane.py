@@ -1063,6 +1063,17 @@ class TestScalarScanToggles:
         assert seen == []  # not present -> handler not called
 
     @pytest.mark.asyncio
+    async def test_null_section_not_dispatched(self):
+        # An explicit `section: null` carries no value; it must be skipped so a
+        # dict handler isn't handed None (which would raise). Falsy scalars
+        # still dispatch (covered above) -- only None is skipped.
+        client = self._client()
+        seen = []
+        client.register_section_handler("scanner", lambda v: seen.append(v))
+        await self._apply(client, {"scanner": None})
+        assert seen == []
+
+    @pytest.mark.asyncio
     async def test_version_metadata_does_not_warn(self, caplog):
         import logging as _logging
         client = self._client()

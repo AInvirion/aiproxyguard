@@ -42,6 +42,7 @@ class MockSecurityConfig:
 @dataclass
 class MockScannerConfig:
     enabled: bool = True
+    request_scanning: bool = True
 
 
 @dataclass

@@ -153,12 +153,22 @@ class TestScanToggles:
                             response=ResponseScannerConfig(enabled=response_enabled))
         return ScannerPipeline(cfg, SignatureSet(signatures=[]))
 
-    def test_set_request_scanning_toggles_flag(self):
+    def test_set_request_scanning_toggles_dedicated_flag(self):
         p = self._pipeline()
         p.set_request_scanning(False)
-        assert p._config.enabled is False
+        assert p._config.request_scanning is False
         p.set_request_scanning(True)
+        assert p._config.request_scanning is True
+
+    def test_request_scanning_toggle_leaves_global_enabled_untouched(self):
+        # scan_request:false must NOT flip the global switch -- the manual
+        # /check endpoint (which gates only on _config.enabled) stays usable.
+        p = self._pipeline()
         assert p._config.enabled is True
+        p.set_request_scanning(False)
+        assert p._config.enabled is True  # global on/off unaffected
+        # scan() still runs for direct callers like /check
+        assert p.scan("ignore previous instructions").action in ("allow", "block", "warn", "log")
 
     def test_enable_response_scanning_constructs_scanner(self):
         p = self._pipeline(response_enabled=False)

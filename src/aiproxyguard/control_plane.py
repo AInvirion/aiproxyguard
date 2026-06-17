@@ -677,6 +677,12 @@ class ControlPlaneClient:
                 if section not in config:
                     continue
                 section_config = config.get(section)
+                # Skip only an explicit ``null`` value -- an absent key is
+                # already handled above, and falsy scalars (e.g. a scan toggle
+                # set to ``false``) must still dispatch. A null section carries
+                # no value to apply and would only make dict handlers raise.
+                if section_config is None:
+                    continue
                 try:
                     handler(section_config)
                     logger.info(

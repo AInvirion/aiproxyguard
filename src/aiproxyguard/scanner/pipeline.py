@@ -260,8 +260,14 @@ class ScannerPipeline:
             self._config.ml_classifier = config["ml_classifier"]
 
     def set_request_scanning(self, enabled: bool) -> None:
-        """Enable/disable request scanning (policy ``scan_request`` toggle)."""
-        self._config.enabled = enabled
+        """Enable/disable scanning of proxied requests (policy ``scan_request``).
+
+        Toggles the dedicated ``request_scanning`` flag, not the global
+        ``enabled`` switch, so disabling it stops inspecting proxied traffic
+        while the manual ``/check`` detection endpoint and the global on/off
+        remain unaffected.
+        """
+        self._config.request_scanning = enabled
 
     def set_response_scanning(self, enabled: bool) -> None:
         """Enable/disable response scanning (policy ``scan_response`` toggle).
