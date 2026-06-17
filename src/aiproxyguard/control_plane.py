@@ -219,6 +219,11 @@ class ControlPlaneClient:
         self._policy_update_callback: Callable[[dict], None] | None = None
         self._signature_update_callback: Callable[[SignatureSet], None] | None = None
         self._ml_model_callback: Callable[[bytes, dict], None] | None = None
+        # Invoked once at the start of each full model-sync pass, before any
+        # ml_model_callback fires. Lets the scanner reset its highest-tier-wins
+        # tracking so the correct tier wins fresh each pass (and a downgrade
+        # takes effect). See ScannerPipeline.reset_active_ml_tier.
+        self._model_sync_begin_callback: Callable[[], None] | None = None
         # Runtime config-section registry: section name -> handler(raw_section).
         # Adding support for a new pushed section (routing, cache, budget, ...)
         # is a single register_section_handler() call -- the dispatcher in
@@ -269,6 +274,19 @@ class ControlPlaneClient:
         whenever a new ML model is downloaded and decrypted.
         """
         self._ml_model_callback = callback
+
+    def set_model_sync_begin_callback(
+        self, callback: Callable[[], None]
+    ) -> None:
+        """Set callback fired once at the start of each full model-sync pass.
+
+        A model sync re-fetches the full set of bundles the account is entitled
+        to and applies each in turn. This callback runs before any model is
+        applied for the pass, letting the scanner reset its per-pass
+        highest-tier-wins state so the correct tier is chosen fresh (and a tier
+        downgrade takes effect). See ScannerPipeline.reset_active_ml_tier.
+        """
+        self._model_sync_begin_callback = callback
 
     def register_section_handler(
         self, section: str, handler: Callable[[dict], None]
@@ -821,6 +839,15 @@ class ControlPlaneClient:
             bundle_contents = []
             licenses: dict[str, License] = {}
 
+            # Begin a fresh model-sync pass: reset highest-tier-wins tracking so
+            # the correct tier is chosen from the bundles we're about to apply
+            # (and a tier downgrade since the last sync takes effect). Must fire
+            # before the first ml_model_callback below. Safe because syncs run
+            # only from the single _heartbeat_loop task and so never overlap;
+            # the reset target keeps no lock and relies on that serialization.
+            if self._model_sync_begin_callback:
+                self._model_sync_begin_callback()
+
             for bundle_info in bundles:
                 bundle_id = bundle_info.get("id")
                 if not bundle_id:
@@ -1165,6 +1192,14 @@ class ControlPlaneClient:
 
         bundle_contents = []
         licenses: dict[str, License] = {}
+
+        # Begin a fresh model-sync pass (offline): reset highest-tier-wins
+        # tracking so the correct tier wins from the cached bundles below. Must
+        # fire before the first ml_model_callback. This offline load is the
+        # one-shot startup fallback (before the heartbeat loop starts), so it
+        # never overlaps an online sync; the reset target keeps no lock.
+        if self._model_sync_begin_callback:
+            self._model_sync_begin_callback()
 
         for bundle_id in cached_ids:
             cached = load_bundle_cache(bundle_id)
