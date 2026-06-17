@@ -150,6 +150,27 @@ def register_control_plane_callbacks(
 
     cp_client.register_section_handler("cost_optimization", on_cost_optimization_update)
 
+    # Smart model routing (#305). Replaces the live routing config wholesale;
+    # the pipeline's alias pre-step reads config.routing on every request. A
+    # malformed section leaves the previous value in effect (the dispatcher
+    # isolates a raising handler).
+    def on_routing_update(routing_config: dict[str, Any]) -> None:
+        if not isinstance(routing_config, dict):
+            logger.warning("Ignoring invalid routing config", extra={"value": repr(routing_config)})
+            return
+        tasks = routing_config.get("tasks") or {}
+        downgrades = routing_config.get("downgrades") or []
+        dry_run = _to_bool(routing_config.get("dry_run", True), default=True)
+        config.routing.tasks = tasks if isinstance(tasks, dict) else {}
+        config.routing.downgrades = downgrades if isinstance(downgrades, list) else []
+        config.routing.dry_run = dry_run
+        logger.info(
+            "Routing config updated",
+            extra={"task_count": len(config.routing.tasks), "dry_run": dry_run},
+        )
+
+    cp_client.register_section_handler("routing", on_routing_update)
+
     # Policy-level scalar scan toggles. These are booleans, not nested objects,
     # so they must be processed even when false (the dispatcher skips only
     # absent keys, not falsy values). A malformed value (null, object, number,

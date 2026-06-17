@@ -46,9 +46,17 @@ class MockScannerConfig:
 
 
 @dataclass
+class MockRoutingConfig:
+    tasks: dict = field(default_factory=dict)
+    downgrades: list = field(default_factory=list)
+    dry_run: bool = True
+
+
+@dataclass
 class MockConfig:
     security: MockSecurityConfig = field(default_factory=MockSecurityConfig)
     scanner: MockScannerConfig = field(default_factory=MockScannerConfig)
+    routing: MockRoutingConfig = field(default_factory=MockRoutingConfig)
 
 
 def make_scan_result(action: str = "allow") -> SimpleNamespace:
@@ -533,3 +541,150 @@ class TestMutatorScannerCoherence:
 
         # untouched: forwarded byte-identical to the original
         assert session.calls[0]["data"] == original
+
+
+class _SequenceSession:
+    """FakeSession variant that returns a queued response per request call."""
+
+    def __init__(self, responses: list[FakeResponse]) -> None:
+        self._responses = responses
+        self.calls: list[dict] = []
+
+    def request(self, **kwargs: object) -> FakeResponse:
+        self.calls.append(kwargs)
+        idx = min(len(self.calls) - 1, len(self._responses) - 1)
+        return self._responses[idx]
+
+
+def _routing_config(tasks: dict) -> MockConfig:
+    cfg = MockConfig()
+    cfg.routing.tasks = tasks
+    return cfg
+
+
+class TestRouterAlias:
+    """#305 1a: model: router:<task> resolves to a concrete model pre-forward."""
+
+    async def test_alias_rewrites_model_to_cheapest(self) -> None:
+        cfg = _routing_config({"summarize": {"ordered_pool": ["gpt-4o-mini", "gpt-4o"]}})
+        pipeline, session = make_pipeline(config=cfg)
+
+        result = await pipeline.process(
+            make_request(b'{"model": "router:summarize", "messages": []}')
+        )
+
+        assert result.status == 200
+        forwarded = json.loads(session.calls[0]["data"])
+        assert forwarded["model"] == "gpt-4o-mini"
+        # decision surfaced on the response
+        assert result.headers["x-aiproxyguard-routed-model"] == "gpt-4o-mini"
+
+    async def test_scanner_sees_rewritten_model(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": ["cheap"]}})
+        pipeline, session = make_pipeline(config=cfg)
+
+        await pipeline.process(make_request(b'{"model": "router:t", "messages": []}'))
+
+        scanned = pipeline._scanner.scan_async.call_args[0][0]
+        assert json.loads(scanned)["model"] == "cheap"
+
+    async def test_unknown_task_fails_closed_400(self) -> None:
+        cfg = _routing_config({"known": {"ordered_pool": ["m"]}})
+        pipeline, session = make_pipeline(config=cfg)
+
+        result = await pipeline.process(
+            make_request(b'{"model": "router:nope", "messages": []}')
+        )
+
+        assert result.status == 400
+        assert b"unknown_router_task" in result.body
+        assert len(session.calls) == 0  # never forwarded upstream
+
+    async def test_empty_pool_fails_closed_400(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": []}})
+        pipeline, session = make_pipeline(config=cfg)
+
+        result = await pipeline.process(make_request(b'{"model": "router:t"}'))
+
+        assert result.status == 400
+        assert b"no_route" in result.body
+
+    async def test_capability_filter_prefers_fallback(self) -> None:
+        cfg = _routing_config({
+            "t": {"ordered_pool": ["mini"], "fallback": ["strong"]}
+        })
+        pipeline, session = make_pipeline(config=cfg)
+
+        # tools present -> not capable -> fallback model chosen
+        await pipeline.process(
+            make_request(b'{"model": "router:t", "tools": [{"x": 1}]}')
+        )
+
+        assert json.loads(session.calls[0]["data"])["model"] == "strong"
+
+    async def test_non_router_model_untouched(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": ["cheap"]}})
+        pipeline, session = make_pipeline(config=cfg)
+        body = b'{"model": "gpt-4o", "messages": []}'
+
+        result = await pipeline.process(make_request(body))
+
+        assert session.calls[0]["data"] == body
+        assert "x-aiproxyguard-routed-model" not in result.headers
+
+
+class TestRoutingFallbackRetry:
+    """On upstream 5xx, retry the next model in the routing plan."""
+
+    async def test_retries_next_model_on_5xx(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
+        session = _SequenceSession([
+            FakeResponse(status=503, body=b'{"err": 1}'),
+            FakeResponse(status=200, body=b'{"ok": true}'),
+        ])
+        pipeline, _ = make_pipeline(config=cfg, session=session)
+
+        result = await pipeline.process(make_request(b'{"model": "router:t"}'))
+
+        assert result.status == 200
+        assert len(session.calls) == 2
+        assert json.loads(session.calls[0]["data"])["model"] == "a"
+        assert json.loads(session.calls[1]["data"])["model"] == "b"
+        assert result.headers["x-aiproxyguard-routed-model"] == "b"
+        # invariant: every forwarded body is scanned (initial + retry)
+        assert pipeline._scanner.scan_async.call_count == 2
+        rescanned = pipeline._scanner.scan_async.call_args_list[1][0][0]
+        assert json.loads(rescanned)["model"] == "b"
+
+    async def test_4xx_not_retried(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
+        session = _SequenceSession([
+            FakeResponse(status=400, body=b'{"err": 1}'),
+            FakeResponse(status=200, body=b'{"ok": true}'),
+        ])
+        pipeline, _ = make_pipeline(config=cfg, session=session)
+
+        result = await pipeline.process(make_request(b'{"model": "router:t"}'))
+
+        assert result.status == 400
+        assert len(session.calls) == 1  # no retry on 4xx
+
+    async def test_5xx_exhausts_plan_then_returns_last(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
+        session = _SequenceSession([FakeResponse(status=500, body=b'{"err": 1}')])
+        pipeline, _ = make_pipeline(config=cfg, session=session)
+
+        result = await pipeline.process(make_request(b'{"model": "router:t"}'))
+
+        # primary + one retry (b), both 500 -> final 500 returned, bounded
+        assert result.status == 500
+        assert len(session.calls) == 2
+
+    async def test_no_retry_without_routing_plan(self) -> None:
+        session = _SequenceSession([FakeResponse(status=503, body=b'{"err": 1}')])
+        pipeline, _ = make_pipeline(session=session)
+
+        result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+
+        assert result.status == 503
+        assert len(session.calls) == 1  # plain request, no fallback
