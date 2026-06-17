@@ -165,6 +165,17 @@ class IdentityConfig:
 
 
 @dataclass
+class CostOptimizationConfig:
+    """Token-cost-optimization features (opt-in, runtime-toggleable).
+
+    Pushed from the control plane via the ``cost_optimization`` config section.
+    """
+
+    # Inject cache_control into Anthropic top-level system prompts (#304).
+    anthropic_prompt_cache: bool = False
+
+
+@dataclass
 class Config:
     """Root configuration."""
 
@@ -180,6 +191,7 @@ class Config:
     control_plane: ControlPlaneConfig = field(default_factory=ControlPlaneConfig)
     tls: TLSConfig = field(default_factory=TLSConfig)
     identity: IdentityConfig = field(default_factory=IdentityConfig)
+    cost_optimization: CostOptimizationConfig = field(default_factory=CostOptimizationConfig)
 
 
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
@@ -363,6 +375,13 @@ def load_config(path: str) -> Config:
         hash_token=identity_data.get("hash_token", True),
     )
 
+    cost_opt_data = data.get("cost_optimization", {})
+    cost_optimization = CostOptimizationConfig(
+        anthropic_prompt_cache=_to_bool(
+            cost_opt_data.get("anthropic_prompt_cache", False), default=False
+        ),
+    )
+
     return Config(
         server=server,
         upstreams=upstreams,
@@ -376,4 +395,5 @@ def load_config(path: str) -> Config:
         control_plane=control_plane,
         tls=tls,
         identity=identity,
+        cost_optimization=cost_optimization,
     )
