@@ -1017,3 +1017,55 @@ class TestModelSyncOrdering:
         assert ("model", "free") in models
         assert ("model", "enterprise") in models
         assert order.count("begin") == 1
+
+
+class TestScalarScanToggles:
+    """scan_request/scan_response are scalar booleans, and `version` is
+    metadata. The dispatcher must apply falsy scalars (not skip them) and not
+    warn on version."""
+
+    def _client(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        return client
+
+    async def _apply(self, client, cfg):
+        resp = AsyncMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"name": "p", "version": 1, "config": cfg})
+        client._client = AsyncMock()
+        client._client.get = AsyncMock(return_value=resp)
+        await client._fetch_and_apply_policy()
+
+    @pytest.mark.asyncio
+    async def test_scalar_false_section_is_applied_not_skipped(self):
+        client = self._client()
+        seen = []
+        client.register_section_handler("scan_request", lambda v: seen.append(v))
+        await self._apply(client, {"scan_request": False})
+        assert seen == [False]  # falsy value still dispatched
+
+    @pytest.mark.asyncio
+    async def test_scalar_true_section_applied(self):
+        client = self._client()
+        seen = []
+        client.register_section_handler("scan_response", lambda v: seen.append(v))
+        await self._apply(client, {"scan_response": True})
+        assert seen == [True]
+
+    @pytest.mark.asyncio
+    async def test_absent_section_not_dispatched(self):
+        client = self._client()
+        seen = []
+        client.register_section_handler("scan_request", lambda v: seen.append(v))
+        await self._apply(client, {"detection": {}})
+        assert seen == []  # not present -> handler not called
+
+    @pytest.mark.asyncio
+    async def test_version_metadata_does_not_warn(self, caplog):
+        import logging as _logging
+        client = self._client()
+        with caplog.at_level(_logging.WARNING):
+            await self._apply(client, {"version": 1, "detection": {}})
+        assert not any("unrecognized" in r.message.lower() for r in caplog.records)

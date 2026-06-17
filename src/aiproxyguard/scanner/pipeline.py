@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aiproxyguard.config import MLClassifierConfig, ScannerConfig
@@ -258,6 +258,31 @@ class ScannerPipeline:
             self._config.heuristics = config["heuristics"]
         if "ml_classifier" in config:
             self._config.ml_classifier = config["ml_classifier"]
+
+    def set_request_scanning(self, enabled: bool) -> None:
+        """Enable/disable request scanning (policy ``scan_request`` toggle)."""
+        self._config.enabled = enabled
+
+    def set_response_scanning(self, enabled: bool) -> None:
+        """Enable/disable response scanning (policy ``scan_response`` toggle).
+
+        The ResponseScanner only builds its internal scanner when constructed
+        with an enabled config, so enabling at runtime reconstructs it (which
+        also re-filters response-applicable signatures); disabling drops it.
+
+        Construct first, then commit config + scanner together, so a failed
+        reconstruction leaves prior state intact (no enabled-config /
+        stale-scanner inconsistency) and the error propagates to the caller's
+        per-section isolation.
+        """
+        if enabled:
+            new_response_config = replace(self._config.response, enabled=True)
+            scanner = ResponseScanner(new_response_config, self._signatures)
+            self._config.response = new_response_config
+            self._response_scanner = scanner
+        else:
+            self._config.response.enabled = False
+            self._response_scanner = None
 
     def update_ml_config(self, config: dict) -> None:
         """Update ML classifier configuration from control plane.

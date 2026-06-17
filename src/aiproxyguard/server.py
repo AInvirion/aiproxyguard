@@ -150,6 +150,41 @@ def register_control_plane_callbacks(
 
     cp_client.register_section_handler("cost_optimization", on_cost_optimization_update)
 
+    # Policy-level scalar scan toggles. These are booleans, not nested objects,
+    # so they must be processed even when false (the dispatcher skips only
+    # absent keys, not falsy values). A malformed value (null, object, number,
+    # unrecognized string) is rejected with a warning and leaves the current
+    # state unchanged -- never silently coerced to a default that differs from
+    # both the pushed value and the running config.
+    def _strict_bool(value: object) -> "bool | None":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in (
+            "true", "false", "1", "0", "yes", "no", "on", "off"
+        ):
+            return value.strip().lower() in ("true", "1", "yes", "on")
+        return None
+
+    def on_scan_request_update(value: object) -> None:
+        enabled = _strict_bool(value)
+        if enabled is None:
+            logger.warning("Ignoring invalid scan_request value", extra={"value": repr(value)})
+            return
+        scanner.set_request_scanning(enabled)
+        logger.info("Request scanning toggled", extra={"enabled": enabled})
+
+    cp_client.register_section_handler("scan_request", on_scan_request_update)
+
+    def on_scan_response_update(value: object) -> None:
+        enabled = _strict_bool(value)
+        if enabled is None:
+            logger.warning("Ignoring invalid scan_response value", extra={"value": repr(value)})
+            return
+        scanner.set_response_scanning(enabled)
+        logger.info("Response scanning toggled", extra={"enabled": enabled})
+
+    cp_client.register_section_handler("scan_response", on_scan_response_update)
+
     # Set initial signature version from bundled signatures
     initial_sig_version = get_signature_version(config.signatures.path)
     if initial_sig_version:
