@@ -68,6 +68,11 @@ class ScannerConfig:
     """Scanner configuration."""
 
     enabled: bool = True
+    # Whether inbound proxied requests are scanned. Distinct from ``enabled``
+    # (the global on/off): toggling this off via the policy ``scan_request``
+    # flag stops scanning proxied traffic while leaving the manual ``/check``
+    # detection endpoint and the global switch untouched.
+    request_scanning: bool = True
     regex: bool = True
     heuristics: bool = True
     ml_classifier: bool = False
@@ -288,6 +293,7 @@ def load_config(path: str) -> Config:
     )
     scanner = ScannerConfig(
         enabled=scanner_data.get("enabled", True),
+        request_scanning=scanner_data.get("request_scanning", True),
         regex=scanner_data.get("regex", True),
         heuristics=scanner_data.get("heuristics", True),
         ml_classifier=scanner_data.get("ml_classifier", False),

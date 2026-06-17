@@ -220,7 +220,7 @@ class RequestPipeline:
     ) -> PipelineResult | None:
         """Scan the outbound bytes. Returns a result if the request must not be forwarded."""
         config = self._config
-        if not (config.scanner.enabled and outbound):
+        if not (config.scanner.enabled and config.scanner.request_scanning and outbound):
             return None
 
         scan_start = time.monotonic()

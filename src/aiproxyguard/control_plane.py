@@ -24,7 +24,7 @@ import tarfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import httpx
 
@@ -186,6 +186,10 @@ BOOT_ONLY_CONFIG_SECTIONS = frozenset(
     {"server", "upstreams", "tls", "control_plane", "signatures", "metrics", "identity"}
 )
 
+# Config-level metadata keys (not feature sections, not applied) -- ignored
+# quietly so they don't trip the unrecognized-section warning.
+CONFIG_METADATA_SECTIONS = frozenset({"version"})
+
 
 class ControlPlaneClient:
     """Client for communicating with the AIProxyGuard control plane."""
@@ -228,7 +232,7 @@ class ControlPlaneClient:
         # Adding support for a new pushed section (routing, cache, budget, ...)
         # is a single register_section_handler() call -- the dispatcher in
         # _fetch_and_apply_policy needs no changes.
-        self._section_handlers: dict[str, Callable[[dict], None]] = {}
+        self._section_handlers: dict[str, Callable[[Any], None]] = {}
         self._manifest_verifier = manifest_verifier or get_verifier()
         # Signature bundle tracking
         self._bundle_licenses: dict[str, dict] = {}  # bundle_id -> license_data
@@ -670,8 +674,14 @@ class ControlPlaneClient:
             # section (its previous value stays in effect) and does not abort the
             # rest of the config apply.
             for section, handler in self._section_handlers.items():
+                if section not in config:
+                    continue
                 section_config = config.get(section)
-                if not section_config:
+                # Skip only an explicit ``null`` value -- an absent key is
+                # already handled above, and falsy scalars (e.g. a scan toggle
+                # set to ``false``) must still dispatch. A null section carries
+                # no value to apply and would only make dict handlers raise.
+                if section_config is None:
                     continue
                 try:
                     handler(section_config)
@@ -691,6 +701,7 @@ class ControlPlaneClient:
                 POLICY_CONFIG_SECTIONS
                 | set(self._section_handlers)
                 | BOOT_ONLY_CONFIG_SECTIONS
+                | CONFIG_METADATA_SECTIONS
             )
             for section in config:
                 if section in known:
