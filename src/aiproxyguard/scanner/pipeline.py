@@ -19,10 +19,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from aiproxyguard.config import MLClassifierConfig, ScannerConfig
     from aiproxyguard.signatures.models import SignatureSet
+from aiproxyguard.logging import get_logger
 from aiproxyguard.scanner.regex import RegexScanner
 from aiproxyguard.scanner.heuristics import HeuristicsScanner
 from aiproxyguard.scanner.response import ResponseScanner, ResponseScanResult
 from aiproxyguard.scanner.ml import MLClassifier
+
+logger = get_logger("scanner.pipeline")
+
+# Relative precedence of model tiers. The control plane sends an account every
+# tier it is entitled to (e.g. an enterprise account gets free+pro+enterprise),
+# and models arrive in bundle order. Without precedence, a lower-tier model
+# applied later would overwrite a higher one, so an enterprise account could
+# end up running the pro model. We keep the highest tier active.
+_ML_TIER_RANK = {"free": 0, "pro": 1, "enterprise": 2}
 
 
 def normalize_category_slug(category: str) -> str:
@@ -58,6 +68,9 @@ class ScannerPipeline:
         self._heuristics_scanner: HeuristicsScanner | None = None
         self._response_scanner: ResponseScanner | None = None
         self._ml_classifier: MLClassifier | None = None
+        # Tier rank of the currently-active ML model (-1 = unknown/none).
+        # Used to keep the highest entitled tier active across model syncs.
+        self._ml_model_tier_rank: int = -1
         if config.regex:
             self._regex_scanner = RegexScanner(signatures)
         if config.heuristics:
@@ -172,6 +185,28 @@ class ScannerPipeline:
             path = Path(model_path) if model_path else None
             self._ml_classifier.reload(path)
 
+    def reset_active_ml_tier(self) -> None:
+        """Reset the active-model tier tracking at the start of a model-sync pass.
+
+        Each signature/model sync re-fetches the full set of bundles the account
+        is currently entitled to, so the highest-tier decision must be made fresh
+        per pass. Without this reset, a tier *downgrade* (e.g. enterprise -> pro)
+        would never take effect at runtime because the previously-active higher
+        tier would keep winning. Resetting per pass lets the highest tier among
+        the *currently entitled* bundles win.
+
+        Concurrency invariant: ``_ml_model_tier_rank`` is plain mutable state
+        with no lock, so this reset and the ``load_ml_from_bytes`` calls that
+        follow it must run within a single, non-overlapping sync pass. The
+        control plane guarantees this -- signature/model syncs are driven only
+        by the single ``_heartbeat_loop`` task (and the one-shot offline cache
+        load at startup), so passes are serialized and never interleave. If a
+        concurrent sync caller is ever introduced, this state must be guarded
+        (e.g. snapshot the entitled bundles and pick the winner under a lock)
+        or a mid-pass reset could let a lower tier clobber a higher one.
+        """
+        self._ml_model_tier_rank = -1
+
     def load_ml_from_bytes(self, model_data: bytes, model_config: dict | None = None) -> bool:
         """Load ML model from bytes (e.g., from control plane sync).
 
@@ -181,10 +216,29 @@ class ScannerPipeline:
 
         Returns:
             True if loading was successful.
+
+        Highest-tier-wins: when the model carries a known ``tier``, a model from
+        a lower tier than the currently-active one is skipped, so an account
+        entitled to a higher tier keeps that model regardless of the order
+        bundles are applied. Same-or-higher tier (including same-tier version
+        updates) still loads. Models with no tier info are always applied.
         """
-        if self._ml_classifier:
-            return self._ml_classifier.load_from_bytes(model_data, config=model_config)
-        return False
+        if self._ml_classifier is None:
+            return False
+
+        tier = (model_config or {}).get("tier")
+        new_rank = _ML_TIER_RANK.get(tier, -1) if tier else None
+        if new_rank is not None and new_rank < self._ml_model_tier_rank:
+            logger.info(
+                "Skipping lower-tier ML model; keeping higher-tier model active",
+                extra={"incoming_tier": tier, "active_tier_rank": self._ml_model_tier_rank},
+            )
+            return False
+
+        loaded = self._ml_classifier.load_from_bytes(model_data, config=model_config)
+        if loaded and new_rank is not None:
+            self._ml_model_tier_rank = max(self._ml_model_tier_rank, new_rank)
+        return loaded
 
     def update_scanner_config(self, config: dict) -> None:
         """Update scanner configuration from control plane.

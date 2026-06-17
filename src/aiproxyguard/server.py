@@ -95,6 +95,11 @@ def register_control_plane_callbacks(
 
     cp_client.set_ml_model_callback(on_ml_model_update)
 
+    # Reset highest-tier-wins tracking at the start of each model-sync pass so
+    # the correct tier is chosen fresh from the entitled bundles (and a tier
+    # downgrade takes effect) rather than the previous higher tier sticking.
+    cp_client.set_model_sync_begin_callback(scanner.reset_active_ml_tier)
+
     # Logging config
     def on_logging_update(log_config: dict[str, Any]) -> None:
         update_logging(

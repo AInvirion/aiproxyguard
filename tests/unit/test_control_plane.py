@@ -897,3 +897,123 @@ class TestUnconsumedPolicyKeyDrift:
             await client._fetch_and_apply_policy()
 
         assert any("default_action" in str(r.__dict__.get("section", "")) for r in caplog.records)
+
+
+class TestModelSyncOrdering:
+    """#69: the model-sync-begin callback (which resets the scanner's
+    highest-tier-wins state) must fire before the first ML model is applied, in
+    BOTH the online and offline sync paths. Otherwise a tier downgrade would not
+    take effect, or a stale higher tier could keep clobbering the entitled one.
+    """
+
+    @pytest.mark.asyncio
+    async def test_online_sync_begin_fires_before_first_model(self, monkeypatch):
+        client = ControlPlaneClient(MockControlPlaneConfig())
+        client._tier = "enterprise"
+
+        order: list = []
+        client.set_model_sync_begin_callback(lambda: order.append("begin"))
+        client.set_ml_model_callback(lambda data, cfg: order.append(("model", cfg["tier"])))
+
+        # Manifest with two encrypted bundles in the prod-observed order.
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={
+            "version": "v1",
+            "bundles": [
+                {"id": "b-free", "is_encrypted": True, "tier": "free"},
+                {"id": "b-ent", "is_encrypted": True, "tier": "enterprise"},
+            ],
+        })
+        client._client = MagicMock()
+        client._client.get = AsyncMock(return_value=resp)
+        client._manifest_verifier = MagicMock()
+        client._manifest_verifier.verify_manifest = MagicMock(
+            return_value=MagicMock(valid=True, sequence=1)
+        )
+
+        async def fake_fetch(bundle_id, bundle_info, *a, **k):
+            return {
+                "content_info": {"bundle_id": bundle_id},
+                "model_data": b"MODEL",
+                "model_format": "onnx",
+                "model_config": {"model_id": bundle_id, "model_version": "1"},
+            }
+
+        monkeypatch.setattr(client, "_fetch_encrypted_bundle", fake_fetch)
+        monkeypatch.setattr(
+            "aiproxyguard.signatures.loader.parse_bundles_to_bundle_set",
+            lambda bc, lic: MagicMock(
+                get_active_signatures=lambda: MagicMock(signatures=[]),
+                get_expiring_soon=lambda **k: [],
+                active_signatures_count=0,
+                total_signatures=0,
+            ),
+        )
+        monkeypatch.setattr("aiproxyguard.signatures.cache.clear_expired_cache", lambda: None)
+
+        await client._fetch_and_apply_signatures()
+
+        assert order, "no callbacks fired"
+        assert order[0] == "begin", f"begin must fire first, got {order}"
+        models = [x for x in order if x != "begin"]
+        assert ("model", "free") in models
+        assert ("model", "enterprise") in models
+        assert order.count("begin") == 1
+
+    @pytest.mark.asyncio
+    async def test_offline_sync_begin_fires_before_first_model(self, monkeypatch):
+        import aiproxyguard.control_plane as cp_mod
+
+        client = ControlPlaneClient(MockControlPlaneConfig())
+
+        order: list = []
+        client.set_model_sync_begin_callback(lambda: order.append("begin"))
+        client.set_ml_model_callback(lambda data, cfg: order.append(("model", cfg["tier"])))
+
+        monkeypatch.setattr(
+            "aiproxyguard.signatures.cache.list_cached_bundles",
+            lambda: ["b-free", "b-ent"],
+        )
+
+        def fake_load(bundle_id):
+            tier = "enterprise" if "ent" in bundle_id else "free"
+            return (b"enc", {"dek": "k", "tier": tier, "bundle_version": "1"})
+
+        monkeypatch.setattr("aiproxyguard.signatures.cache.load_bundle_cache", fake_load)
+
+        class FakeLicense:
+            bound_instance_id = None
+            dek = "k"
+
+        monkeypatch.setattr(
+            "aiproxyguard.crypto.license.parse_license", lambda ld: FakeLicense()
+        )
+        monkeypatch.setattr(
+            "aiproxyguard.crypto.license.decrypt_content",
+            lambda *a, **k: b"\x1f\x8bmodelblob",
+        )
+
+        class FakeContent:
+            yaml_content = "rules: []"
+            model_data = b"MODEL"
+            model_format = "onnx"
+            model_config = {"model_id": "m", "model_version": "1"}
+
+        monkeypatch.setattr(cp_mod, "_extract_bundle_content", lambda d: FakeContent())
+        monkeypatch.setattr(
+            "aiproxyguard.signatures.loader.parse_bundles_to_bundle_set",
+            lambda bc, lic: MagicMock(
+                get_active_signatures=lambda: MagicMock(signatures=[]),
+                active_signatures_count=0,
+            ),
+        )
+
+        await client._load_signatures_from_cache()
+
+        assert order, "no callbacks fired"
+        assert order[0] == "begin", f"begin must fire first, got {order}"
+        models = [x for x in order if x != "begin"]
+        assert ("model", "free") in models
+        assert ("model", "enterprise") in models
+        assert order.count("begin") == 1

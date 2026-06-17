@@ -33,6 +33,7 @@ EXPECTED_SETTERS = {
     "set_policy_update_callback",
     "set_signature_update_callback",
     "set_ml_model_callback",
+    "set_model_sync_begin_callback",
     "set_logging_update_callback",
     "set_scanner_update_callback",
     "set_ml_config_update_callback",
@@ -122,6 +123,23 @@ class TestCallbackRegistration:
         new_sigs = MagicMock()
         new_sigs.signatures = []
         sig_cb(new_sigs)  # must not raise
+
+    def test_model_sync_begin_resets_scanner_tier(self) -> None:
+        """#69: the begin callback must clear the scanner's highest-tier-wins
+        state so a fresh sync pass re-decides (and a downgrade takes effect)."""
+        cp_client = MagicMock()
+        scanner = MagicMock()
+        register_control_plane_callbacks(
+            cp_client,
+            scanner=scanner,
+            policy=MagicMock(),
+            config=FakeConfig(),
+            metrics=MagicMock(),
+        )
+        begin_cb = cp_client.set_model_sync_begin_callback.call_args.args[0]
+        assert begin_cb is scanner.reset_active_ml_tier
+        begin_cb()
+        assert scanner.reset_active_ml_tier.called
 
 
 class TestCostOptimizationHandler:
