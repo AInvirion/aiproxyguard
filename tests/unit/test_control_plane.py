@@ -777,3 +777,123 @@ class TestFlushCancellationSafety:
         await t1
 
         assert post_calls == 1
+
+
+class TestConfigSectionRegistry:
+    """#312: runtime config sections are dispatched through a registry, so a
+    new section needs only register_section_handler() -- no dispatcher edits."""
+
+    def _client_with_policy(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        return client
+
+    async def _apply(self, client, cfg: dict):
+        """Drive _fetch_and_apply_policy with a mocked policy fetch."""
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value={"name": "p", "version": 1, "config": cfg})
+        client._client = AsyncMock()
+        client._client.get = AsyncMock(return_value=mock_response)
+        await client._fetch_and_apply_policy()
+
+    @pytest.mark.asyncio
+    async def test_registered_section_handler_receives_its_section(self):
+        client = self._client_with_policy()
+        seen = {}
+        client.register_section_handler("routing", lambda c: seen.update(c))
+
+        await self._apply(client, {"routing": {"enabled": True, "rules": [1, 2]}})
+
+        assert seen == {"enabled": True, "rules": [1, 2]}
+
+    @pytest.mark.asyncio
+    async def test_new_section_needs_no_dispatcher_change(self):
+        """A brand-new section name works purely via registration."""
+        client = self._client_with_policy()
+        calls = []
+        for name in ("cache", "budget", "cost_optimization"):
+            client.register_section_handler(name, lambda c, n=name: calls.append((n, c)))
+
+        await self._apply(client, {
+            "cache": {"ttl": 60},
+            "budget": {"daily": 1000},
+            "cost_optimization": {"mode": "aggressive"},
+        })
+
+        assert sorted(n for n, _ in calls) == ["budget", "cache", "cost_optimization"]
+
+    @pytest.mark.asyncio
+    async def test_one_bad_section_does_not_abort_others(self):
+        client = self._client_with_policy()
+        applied = []
+
+        def boom(_):
+            raise ValueError("bad routing config")
+
+        client.register_section_handler("routing", boom)
+        client.register_section_handler("logging", lambda c: applied.append("logging"))
+
+        # Must not raise, and logging must still be applied despite routing failing
+        await self._apply(client, {"routing": {"x": 1}, "logging": {"level": "debug"}})
+
+        assert applied == ["logging"]
+
+    @pytest.mark.asyncio
+    async def test_unknown_section_warns(self, caplog):
+        import logging as _logging
+
+        client = self._client_with_policy()
+        with caplog.at_level(_logging.WARNING):
+            await self._apply(client, {"totally_unknown_section": {"x": 1}})
+
+        assert any("unrecognized" in r.message.lower() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_boot_only_section_ignored_without_warning(self, caplog):
+        import logging as _logging
+
+        client = self._client_with_policy()
+        with caplog.at_level(_logging.WARNING):
+            await self._apply(client, {"upstreams": {"openai": {"url": "x"}}, "tls": {"enabled": True}})
+
+        assert not any("unrecognized" in r.message.lower() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_typed_setters_register_into_registry(self):
+        client = self._client_with_policy()
+        client.set_logging_update_callback(lambda c: None)
+        client.set_scanner_update_callback(lambda c: None)
+        client.set_ml_config_update_callback(lambda c: None)
+        client.set_security_update_callback(lambda c: None)
+
+        assert set(client._section_handlers) == {"logging", "scanner", "ml_classifier", "security"}
+
+
+class TestUnconsumedPolicyKeyDrift:
+    @pytest.mark.asyncio
+    async def test_top_level_default_action_warns_as_drift(self, caplog):
+        """A top-level default_action is NOT consumed by the translation, so it
+        must surface as an unrecognized-section warning, not be silently dropped."""
+        import logging as _logging
+
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client.set_policy_update_callback(lambda c: None)
+
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value={
+            "name": "p", "version": 1,
+            "config": {"detection": {"prompt-injection": {"enabled": True, "action": "block"}},
+                       "default_action": "warn"},
+        })
+        client._client = AsyncMock()
+        client._client.get = AsyncMock(return_value=mock_response)
+
+        with caplog.at_level(_logging.WARNING):
+            await client._fetch_and_apply_policy()
+
+        assert any("default_action" in str(r.__dict__.get("section", "")) for r in caplog.records)
