@@ -461,6 +461,118 @@ class TestUsageReporting:
         assert kwargs["input_tokens"] == 7
         assert kwargs["output_tokens"] == 21
 
+    async def test_anthropic_cache_read_reported(self) -> None:
+        body = (
+            b'{"id": "msg_1", "model": "claude-sonnet-4-5",'
+            b' "usage": {"input_tokens": 7, "output_tokens": 21,'
+            b' "cache_read_input_tokens": 900}}'
+        )
+        pipeline, _ = make_pipeline(session=FakeSession(FakeResponse(status=200, body=body)))
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "claude-sonnet-4-5"}'))
+            await asyncio.sleep(0)
+
+        assert cp.report_usage.call_args.kwargs["cache_read_tokens"] == 900
+
+    async def test_no_routing_provenance_when_not_routed(self) -> None:
+        pipeline, _ = make_pipeline(
+            session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY))
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["requested_model"] is None
+        assert kwargs["routed_model"] is None
+        assert kwargs["routing_mode"] is None
+        assert kwargs["cache_read_tokens"] is None
+
+    async def test_applied_downgrade_provenance(self) -> None:
+        mini_body = (
+            b'{"id": "chatcmpl-1", "model": "gpt-4o-mini",'
+            b' "usage": {"prompt_tokens": 12, "completion_tokens": 34}}'
+        )
+        pipeline, _ = make_pipeline(
+            config=_downgrade_config(dry_run=False),
+            session=FakeSession(FakeResponse(status=200, body=mini_body)),
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(
+                b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}'
+            ))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["requested_model"] == "gpt-4o"
+        assert kwargs["routed_model"] == "gpt-4o-mini"
+        assert kwargs["routing_mode"] == "applied"
+
+    async def test_dry_run_downgrade_provenance(self) -> None:
+        pipeline, _ = make_pipeline(
+            config=_downgrade_config(dry_run=True),
+            session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY)),
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(
+                b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}'
+            ))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["requested_model"] == "gpt-4o"
+        assert kwargs["routed_model"] == "gpt-4o-mini"
+        assert kwargs["routing_mode"] == "dry_run"  # not rewritten, only projected
+
+    async def test_alias_routing_provenance(self) -> None:
+        cfg = _routing_config({"summarize": {"ordered_pool": ["gpt-4o-mini"]}})
+        mini_body = (
+            b'{"id": "chatcmpl-1", "model": "gpt-4o-mini",'
+            b' "usage": {"prompt_tokens": 12, "completion_tokens": 34}}'
+        )
+        pipeline, _ = make_pipeline(
+            config=cfg, session=FakeSession(FakeResponse(status=200, body=mini_body))
+        )
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "router:summarize", "messages": []}'))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["requested_model"] == "router:summarize"
+        assert kwargs["routed_model"] == "gpt-4o-mini"
+        assert kwargs["routing_mode"] == "applied"
+
+    async def test_alias_fallback_reports_final_served_model(self) -> None:
+        # router:t routes to "a"; a 5xx forces fallback to "b". Usage telemetry
+        # must report the model actually served ("b"), not the stale first choice.
+        cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
+        ok_body = b'{"model": "b", "usage": {"prompt_tokens": 5, "completion_tokens": 9}}'
+        session = _SequenceSession([
+            FakeResponse(status=503, body=b'{"err": 1}'),
+            FakeResponse(status=200, body=ok_body),
+        ])
+        pipeline, _ = make_pipeline(config=cfg, session=session)
+        cp = self._cp_client()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(b'{"model": "router:t", "messages": []}'))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["requested_model"] == "router:t"
+        assert kwargs["routed_model"] == "b"  # final served model, not "a"
+        assert kwargs["routing_mode"] == "applied"
+
     async def test_usage_reported_even_when_response_blocked(self) -> None:
         """The provider billed for the completion even if the proxy blocks
         the response -- usage must still be accounted."""

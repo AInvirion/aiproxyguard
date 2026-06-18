@@ -94,6 +94,48 @@ class TestBilledTokens:
         assert result is not None
         assert result.input_tokens == 7
         assert result.output_tokens == 21
+        assert result.cache_read_tokens == 0  # absent -> 0
+
+    def test_anthropic_cache_read_tokens(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        result = billed_tokens({
+            "id": "msg_1",
+            "model": "claude-sonnet-4-5",
+            # input_tokens EXCLUDES cache reads (Anthropic reports them apart).
+            "usage": {
+                "input_tokens": 7,
+                "output_tokens": 21,
+                "cache_read_input_tokens": 500,
+            },
+        })
+        assert result is not None
+        assert result.input_tokens == 7
+        assert result.cache_read_tokens == 500
+
+    def test_invalid_cache_read_tokens_coerced_to_zero(self):
+        from aiproxyguard.tokens import billed_tokens
+
+        result = billed_tokens({
+            "usage": {"input_tokens": 7, "output_tokens": 21, "cache_read_input_tokens": -5},
+        })
+        assert result is not None
+        assert result.cache_read_tokens == 0
+
+    def test_openai_cached_tokens_ignored(self):
+        # OpenAI's cached_tokens is a subset of prompt_tokens with a different
+        # discount; we don't surface it (would double-count / misprice).
+        from aiproxyguard.tokens import billed_tokens
+
+        result = billed_tokens({
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "prompt_tokens_details": {"cached_tokens": 80},
+            },
+        })
+        assert result is not None
+        assert result.cache_read_tokens == 0
 
     def test_missing_usage_returns_none(self):
         from aiproxyguard.tokens import billed_tokens
