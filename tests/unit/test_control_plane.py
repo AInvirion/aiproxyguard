@@ -491,12 +491,16 @@ class TestUsageReporting:
         assert event.routing_mode == "applied"
         assert event.cache_read_tokens == 500
 
-    def test_event_ids_are_unique_and_stable(self):
-        # Unique across events, stable per event (survives flush retries).
+    def test_event_ids_are_unique_and_well_formed(self):
+        # Distinct events get distinct ids, each a valid UUIDv4 string. (Stability
+        # across flush retries is covered by test_event_id_stable_across_flush_retry.)
+        import uuid
+
         e1 = TelemetryEvent(event_type="usage", category="usage")
         e2 = TelemetryEvent(event_type="usage", category="usage")
         assert e1.event_id != e2.event_id
-        assert e1.event_id == e1.event_id
+        for eid in (e1.event_id, e2.event_id):
+            assert uuid.UUID(eid).version == 4
 
     @pytest.mark.asyncio
     async def test_flush_payload_includes_optimization_fields(self):
