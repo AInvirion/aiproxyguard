@@ -38,6 +38,9 @@ logger = get_logger("routing")
 
 ROUTER_PREFIX = "router:"
 ROUTED_MODEL_HEADER = "x-aiproxyguard-routed-model"
+# Dry-run decision header for transparent downgrades (#305 1b): reports the
+# would-be route without rewriting the model, for validation before enabling.
+ROUTING_DECISION_HEADER = "x-aiproxyguard-routing-decision"
 
 # Request features that a cheaper pool member may not support, or that make a
 # downgrade unsafe. When present, routing prefers the author-designated
@@ -134,6 +137,27 @@ def select_route(task_cfg: dict[str, Any], capable: bool) -> RoutingDecision | N
     if not ordered:
         return None
     return RoutingDecision(chosen=ordered[0], retry_plan=ordered[1:])
+
+
+def select_downgrade(
+    model: str, provider: str, downgrades: list[Any], eligible: bool
+) -> str | None:
+    """Pick the cheaper target model for a transparent downgrade, or None.
+
+    Returns the ``to`` model of the first downgrade pair matching the request's
+    provider and current ``model`` -- but only when the complexity scorer marked
+    the request ``eligible`` (a simple/trivial tier). Same-provider only.
+    """
+    if not eligible:
+        return None
+    for pair in downgrades:
+        if not isinstance(pair, dict):
+            continue
+        if pair.get("provider") == provider and pair.get("from") == model:
+            to = pair.get("to")
+            if isinstance(to, str) and to.strip():
+                return to.strip()
+    return None
 
 
 def sanitize_header_value(value: str) -> str:

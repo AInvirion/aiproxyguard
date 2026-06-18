@@ -688,3 +688,104 @@ class TestRoutingFallbackRetry:
 
         assert result.status == 503
         assert len(session.calls) == 1  # plain request, no fallback
+
+
+def _downgrade_config(dry_run: bool = True) -> MockConfig:
+    cfg = MockConfig()
+    cfg.routing.downgrades = [
+        {"provider": "openai", "from": "gpt-4o", "to": "gpt-4o-mini"}
+    ]
+    cfg.routing.dry_run = dry_run
+    return cfg
+
+
+class TestTransparentDowngrade:
+    """#305 1b: complexity-scored same-provider downgrade, dry-run by default."""
+
+    async def test_dry_run_annotates_without_rewriting(self) -> None:
+        pipeline, session = make_pipeline(config=_downgrade_config(dry_run=True))
+
+        result = await pipeline.process(
+            make_request(b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}')
+        )
+
+        # model NOT rewritten upstream
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"
+        # decision surfaced, but no routed-model header (no actual route)
+        assert "x-aiproxyguard-routing-decision" in result.headers
+        assert "gpt-4o-mini" in result.headers["x-aiproxyguard-routing-decision"]
+        assert "x-aiproxyguard-routed-model" not in result.headers
+
+    async def test_live_mode_rewrites_model(self) -> None:
+        pipeline, session = make_pipeline(config=_downgrade_config(dry_run=False))
+
+        result = await pipeline.process(
+            make_request(b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}')
+        )
+
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o-mini"
+        assert result.headers["x-aiproxyguard-routed-model"] == "gpt-4o-mini"
+
+    async def test_excluded_request_not_downgraded(self) -> None:
+        pipeline, session = make_pipeline(config=_downgrade_config(dry_run=False))
+
+        result = await pipeline.process(
+            make_request(b'{"model": "gpt-4o", "tools": [{"x": 1}], "messages": [{"role": "user", "content": "hi"}]}')
+        )
+
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"  # unchanged
+        assert "x-aiproxyguard-routed-model" not in result.headers
+
+    async def test_complex_prompt_not_downgraded(self) -> None:
+        pipeline, session = make_pipeline(config=_downgrade_config(dry_run=False))
+
+        # 2+ reasoning markers -> strong tier -> not downgrade-eligible
+        body = b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "Explain why and reason through this carefully"}]}'
+        result = await pipeline.process(make_request(body))
+
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"
+        assert "x-aiproxyguard-routed-model" not in result.headers
+
+    async def test_no_downgrade_without_config(self) -> None:
+        pipeline, session = make_pipeline()  # default: no downgrades
+        result = await pipeline.process(
+            make_request(b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}')
+        )
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"
+        assert "x-aiproxyguard-routing-decision" not in result.headers
+
+
+class TestDowngradeIntegrationEdges:
+    """Edge contracts for transparent downgrade."""
+
+    async def test_alias_routed_request_never_downgraded(self) -> None:
+        cfg = _routing_config({"t": {"ordered_pool": ["cheap"]}})
+        cfg.routing.downgrades = [{"provider": "openai", "from": "cheap", "to": "cheaper"}]
+        cfg.routing.dry_run = True
+        pipeline, session = make_pipeline(config=cfg)
+
+        result = await pipeline.process(make_request(b'{"model": "router:t", "messages": [{"role": "user", "content": "hi"}]}'))
+
+        # alias routed to "cheap"; downgrade must NOT also fire
+        assert result.headers["x-aiproxyguard-routed-model"] == "cheap"
+        assert "x-aiproxyguard-routing-decision" not in result.headers
+        assert json.loads(session.calls[0]["data"])["model"] == "cheap"
+
+    async def test_empty_prompt_not_downgraded(self) -> None:
+        pipeline, session = make_pipeline(config=_downgrade_config(dry_run=False))
+        # no extractable prompt text -> fail closed (no downgrade)
+        result = await pipeline.process(make_request(b'{"model": "gpt-4o", "messages": []}'))
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"
+        assert "x-aiproxyguard-routed-model" not in result.headers
+
+    async def test_default_dry_run_does_not_rewrite(self) -> None:
+        # MockRoutingConfig.dry_run defaults True; a configured downgrade only
+        # annotates unless dry_run is explicitly false.
+        cfg = MockConfig()
+        cfg.routing.downgrades = [{"provider": "openai", "from": "gpt-4o", "to": "gpt-4o-mini"}]
+        pipeline, session = make_pipeline(config=cfg)
+        result = await pipeline.process(
+            make_request(b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}')
+        )
+        assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"  # not rewritten
+        assert "x-aiproxyguard-routing-decision" in result.headers
