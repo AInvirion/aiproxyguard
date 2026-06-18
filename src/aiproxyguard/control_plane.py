@@ -21,6 +21,7 @@ import hashlib
 import logging
 import platform
 import tarfile
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from io import BytesIO
@@ -158,7 +159,15 @@ class TelemetryEvent:
     model: str | None = None  # "gpt-4o", "claude-3-sonnet", etc.
     input_tokens: int | None = None  # Estimated (blocks) or billed (usage) input tokens
     output_tokens: int | None = None  # Billed output tokens (usage events only)
+    # Smart-routing + prompt-cache provenance (usage events only).
+    requested_model: str | None = None  # original model, pre-rewrite
+    routed_model: str | None = None  # chosen/would-be cheaper model
+    routing_mode: str | None = None  # "applied" | "dry_run"
+    cache_read_tokens: int | None = None  # Anthropic prompt-cache reads
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    # Stable per-event id for idempotent ingest dedupe. Generated once at
+    # construction so it survives at-least-once flush retries unchanged.
+    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
 # Telemetry buffer safety rails: the cloud rejects batches over 100 events,
@@ -1346,12 +1355,17 @@ class ControlPlaneClient:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         latency_ms: int | None = None,
+        requested_model: str | None = None,
+        routed_model: str | None = None,
+        routing_mode: str | None = None,
+        cache_read_tokens: int | None = None,
     ) -> None:
         """Buffer a billed-token usage event for an allowed (forwarded) request.
 
         Token counts are the provider-billed values from the response usage
-        field, not estimates. Gated by control_plane.report_usage in addition
-        to the usual telemetry gates.
+        field, not estimates. Optional routing/cache provenance lets the control
+        plane attribute optimization savings. Gated by control_plane.report_usage
+        in addition to the usual telemetry gates.
         """
         if not self.usage_reporting_enabled:
             return
@@ -1365,6 +1379,10 @@ class ControlPlaneClient:
             model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            requested_model=requested_model,
+            routed_model=routed_model,
+            routing_mode=routing_mode,
+            cache_read_tokens=cache_read_tokens,
         )
 
         await self._buffer_event(event)
@@ -1486,6 +1504,11 @@ class ControlPlaneClient:
                                 "model": e.model,
                                 "input_tokens": e.input_tokens,
                                 "output_tokens": e.output_tokens,
+                                "requested_model": e.requested_model,
+                                "routed_model": e.routed_model,
+                                "routing_mode": e.routing_mode,
+                                "cache_read_tokens": e.cache_read_tokens,
+                                "event_id": e.event_id,
                             }
                             for e in chunk
                         ]

@@ -465,6 +465,71 @@ class TestUsageReporting:
         assert event.input_tokens == 12
         assert event.output_tokens == 34
         assert event.model == "gpt-4o-2024-08-06"
+        # Every event carries a generated event_id for idempotent dedupe.
+        assert event.event_id
+
+    @pytest.mark.asyncio
+    async def test_report_usage_records_routing_provenance(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        await client.report_usage(
+            provider="openai",
+            model="gpt-4o-mini",
+            input_tokens=12,
+            output_tokens=34,
+            requested_model="gpt-4o",
+            routed_model="gpt-4o-mini",
+            routing_mode="applied",
+            cache_read_tokens=500,
+        )
+
+        event = client._telemetry_buffer[0]
+        assert event.requested_model == "gpt-4o"
+        assert event.routed_model == "gpt-4o-mini"
+        assert event.routing_mode == "applied"
+        assert event.cache_read_tokens == 500
+
+    def test_event_ids_are_unique_and_stable(self):
+        # Unique across events, stable per event (survives flush retries).
+        e1 = TelemetryEvent(event_type="usage", category="usage")
+        e2 = TelemetryEvent(event_type="usage", category="usage")
+        assert e1.event_id != e2.event_id
+        assert e1.event_id == e1.event_id
+
+    @pytest.mark.asyncio
+    async def test_flush_payload_includes_optimization_fields(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client.instance_id = "inst-1"
+        await client.report_usage(
+            provider="openai",
+            model="gpt-4o-mini",
+            input_tokens=12,
+            output_tokens=34,
+            requested_model="gpt-4o",
+            routed_model="gpt-4o-mini",
+            routing_mode="dry_run",
+            cache_read_tokens=500,
+        )
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 201
+        mock_response.raise_for_status = MagicMock()
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(return_value=mock_response)
+
+        await client._flush_telemetry()
+
+        payload = client._client.post.call_args.kwargs["json"]
+        event = payload["events"][0]
+        assert event["requested_model"] == "gpt-4o"
+        assert event["routed_model"] == "gpt-4o-mini"
+        assert event["routing_mode"] == "dry_run"
+        assert event["cache_read_tokens"] == 500
+        assert event["event_id"]
 
     @pytest.mark.asyncio
     async def test_report_usage_gated_by_config_flag(self):
@@ -495,6 +560,35 @@ class TestUsageReporting:
         await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
 
         assert len(client._telemetry_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_event_id_stable_across_flush_retry(self):
+        # A 429 requeues the event; the next flush must resend the SAME event_id
+        # so the cloud dedupes the retry instead of double-counting savings.
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+        client.instance_id = "inst-1"
+        await client.report_usage(provider="openai", input_tokens=1, output_tokens=2)
+        original_id = client._telemetry_buffer[0].event_id
+
+        transient = AsyncMock()
+        transient.status_code = 429
+        transient.raise_for_status = MagicMock()
+        ok = AsyncMock()
+        ok.status_code = 201
+        ok.raise_for_status = MagicMock()
+        client._client = AsyncMock()
+        client._client.post = AsyncMock(side_effect=[transient, ok])
+
+        await client._flush_telemetry()  # 429 -> requeued
+        assert len(client._telemetry_buffer) == 1
+        await client._flush_telemetry()  # retry -> 201
+
+        first_payload = client._client.post.call_args_list[0].kwargs["json"]
+        second_payload = client._client.post.call_args_list[1].kwargs["json"]
+        assert first_payload["events"][0]["event_id"] == original_id
+        assert second_payload["events"][0]["event_id"] == original_id
 
     @pytest.mark.asyncio
     async def test_flush_chunks_large_buffers(self):

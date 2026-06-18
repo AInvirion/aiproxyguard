@@ -101,6 +101,10 @@ class BilledTokens:
 
     input_tokens: int
     output_tokens: int
+    # Anthropic prompt-cache reads. Billed at ~0.1x the normal input price and
+    # reported SEPARATELY from input_tokens (input_tokens excludes them), so the
+    # control plane can value the saving without double-counting. 0 when absent.
+    cache_read_tokens: int = 0
 
 
 def billed_tokens(response_json: dict[str, Any]) -> BilledTokens | None:
@@ -109,11 +113,17 @@ def billed_tokens(response_json: dict[str, Any]) -> BilledTokens | None:
     Supports the two dominant usage shapes:
     - OpenAI-compatible: ``usage.prompt_tokens`` / ``usage.completion_tokens``
       (also used by Azure OpenAI, OpenRouter, vLLM, Ollama's OpenAI endpoint)
-    - Anthropic: ``usage.input_tokens`` / ``usage.output_tokens``
+    - Anthropic: ``usage.input_tokens`` / ``usage.output_tokens`` plus the
+      optional ``usage.cache_read_input_tokens`` prompt-cache counter.
 
     Returns None when the response carries no recognizable usage data
     (errors, streaming chunks, non-chat endpoints) -- callers must treat
     that as "unknown", never as zero.
+
+    Note: only Anthropic's ``cache_read_input_tokens`` is surfaced. OpenAI's
+    ``prompt_tokens_details.cached_tokens`` is intentionally ignored -- it is a
+    subset of ``prompt_tokens`` (already counted) and carries a different
+    discount, so reporting it would risk double-counting and mispricing.
     """
     usage = response_json.get("usage")
     if not isinstance(usage, dict):
@@ -134,6 +144,11 @@ def billed_tokens(response_json: dict[str, Any]) -> BilledTokens | None:
     inp = usage.get("input_tokens")
     out = usage.get("output_tokens")
     if _valid(inp) and _valid(out):
-        return BilledTokens(input_tokens=inp, output_tokens=out)
+        cache_read = usage.get("cache_read_input_tokens")
+        return BilledTokens(
+            input_tokens=inp,
+            output_tokens=out,
+            cache_read_tokens=cache_read if _valid(cache_read) else 0,
+        )
 
     return None

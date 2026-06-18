@@ -114,6 +114,14 @@ class PipelineRequest:
     response_annotations: dict[str, str] = field(default_factory=dict)
     # Ordered fallback models to try on an upstream 5xx (set by routing).
     routing_retry: list[str] = field(default_factory=list)
+    # Smart-routing provenance for usage telemetry (set by the routing steps):
+    #   requested_model     -- the original model field, pre-rewrite
+    #   routed_target_model -- the chosen/would-be cheaper model
+    #   routing_mode        -- "applied" (rewritten) or "dry_run" (decided only)
+    # The control plane derives realized vs projected savings from these.
+    requested_model: str | None = None
+    routed_target_model: str | None = None
+    routing_mode: str | None = None
 
 
 @dataclass
@@ -218,7 +226,8 @@ class RequestPipeline:
         if not isinstance(body_json, dict):
             return None
 
-        task_name = parse_router_task(body_json.get("model"))
+        requested = body_json.get("model")
+        task_name = parse_router_task(requested)
         if task_name is None:
             return None
 
@@ -252,6 +261,12 @@ class RequestPipeline:
         request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(
             decision.chosen
         )
+        # Provenance for usage telemetry. The requested side is the alias token
+        # (not a real model name), so the control plane won't price it -- alias
+        # routes show up in the requested->routed breakdown without fabricated $.
+        request.requested_model = str(requested)[:100] if requested is not None else None
+        request.routed_target_model = decision.chosen
+        request.routing_mode = "applied"
         self._metrics.record_routing("alias", "routed")
         logger.info(
             "Routed request via task alias",
@@ -308,10 +323,17 @@ class RequestPipeline:
             self._metrics.record_routing("downgrade", "skipped")
             return
 
+        # Record provenance for usage telemetry in both branches. The control
+        # plane prices (price(requested) - price(target)) x billed tokens:
+        # realized when applied, projected (would-be) when dry-run.
+        request.requested_model = model
+        request.routed_target_model = target
+
         if routing.dry_run:
             request.response_annotations[ROUTING_DECISION_HEADER] = sanitize_header_value(
                 f"would-route {model}->{target} tier={score.tier} score={score.score}"
             )
+            request.routing_mode = "dry_run"
             self._metrics.record_routing("downgrade", "dry_run")
             logger.info(
                 "Downgrade candidate (dry-run; not applied)",
@@ -325,6 +347,7 @@ class RequestPipeline:
         body_json["model"] = target
         request.body = json.dumps(body_json).encode()
         request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(target)
+        request.routing_mode = "applied"
         self._metrics.record_routing("downgrade", "routed")
         logger.info(
             "Downgraded request to cheaper model",
@@ -620,6 +643,10 @@ class RequestPipeline:
         request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(
             next_model
         )
+        # Keep usage-telemetry provenance in sync with the model actually served:
+        # a 5xx fallback changes the routed model, so the prior decision is stale.
+        if request.routed_target_model is not None:
+            request.routed_target_model = next_model
         self._metrics.record_routing("alias", "fallback")
         return rewritten
 
@@ -791,6 +818,10 @@ class RequestPipeline:
             input_tokens=billed.input_tokens,
             output_tokens=billed.output_tokens,
             latency_ms=int(duration * 1000),
+            requested_model=request.requested_model,
+            routed_model=request.routed_target_model,
+            routing_mode=request.routing_mode,
+            cache_read_tokens=billed.cache_read_tokens or None,
         )
 
     def _report_detection(self, **kwargs: Any) -> None:
