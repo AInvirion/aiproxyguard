@@ -1061,8 +1061,6 @@ class TestModelSyncOrdering:
 
     @pytest.mark.asyncio
     async def test_offline_sync_begin_fires_before_first_model(self, monkeypatch):
-        import aiproxyguard.control_plane as cp_mod
-
         client = ControlPlaneClient(MockControlPlaneConfig())
 
         order: list = []
@@ -1098,7 +1096,9 @@ class TestModelSyncOrdering:
             model_format = "onnx"
             model_config = {"model_id": "m", "model_version": "1"}
 
-        monkeypatch.setattr(cp_mod, "_extract_bundle_content", lambda d: FakeContent())
+        monkeypatch.setattr(
+            "aiproxyguard.control_plane._extract_bundle_content", lambda d: FakeContent()
+        )
         monkeypatch.setattr(
             "aiproxyguard.signatures.loader.parse_bundles_to_bundle_set",
             lambda bc, lic: MagicMock(
