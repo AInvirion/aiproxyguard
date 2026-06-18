@@ -23,6 +23,7 @@ from aiproxyguard.routing import (
     parse_router_task,
     rewrite_model,
     sanitize_header_value,
+    select_downgrade,
     select_route,
 )
 
@@ -138,6 +139,29 @@ class TestRewriteModel:
 
     def test_non_object_returns_none(self) -> None:
         assert rewrite_model(b'["a", "b"]', "new") is None
+
+
+class TestSelectDowngrade:
+    PAIRS = [
+        {"provider": "openai", "from": "gpt-4o", "to": "gpt-4o-mini"},
+        {"provider": "anthropic", "from": "claude-x", "to": "claude-haiku"},
+    ]
+
+    def test_eligible_match_returns_target(self):
+        assert select_downgrade("gpt-4o", "openai", self.PAIRS, True) == "gpt-4o-mini"
+
+    def test_not_eligible_returns_none(self):
+        assert select_downgrade("gpt-4o", "openai", self.PAIRS, False) is None
+
+    def test_provider_mismatch_returns_none(self):
+        assert select_downgrade("gpt-4o", "anthropic", self.PAIRS, True) is None
+
+    def test_model_not_in_pairs_returns_none(self):
+        assert select_downgrade("gpt-4o-mini", "openai", self.PAIRS, True) is None
+
+    def test_trims_target(self):
+        pairs = [{"provider": "openai", "from": "a", "to": " b "}]
+        assert select_downgrade("a", "openai", pairs, True) == "b"
 
 
 class TestSanitizeHeaderValue:

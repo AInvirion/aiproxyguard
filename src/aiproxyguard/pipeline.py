@@ -42,12 +42,15 @@ from aiproxyguard.control_plane import get_client
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.policy import PolicyEngine
+from aiproxyguard.complexity import extract_prompt_text, score_text
 from aiproxyguard.routing import (
     ROUTED_MODEL_HEADER,
+    ROUTING_DECISION_HEADER,
     capability_ok,
     parse_router_task,
     rewrite_model,
     sanitize_header_value,
+    select_downgrade,
     select_route,
 )
 from aiproxyguard.scanner.pipeline import ScannerPipeline
@@ -183,6 +186,11 @@ class RequestPipeline:
         if routing_error is not None:
             return routing_error
 
+        # Transparent complexity-scored downgrade for requests that did NOT opt
+        # in (no router: alias). No-op unless downgrades are configured; ships
+        # behind dry_run (default) so it only annotates, never rewrites.
+        self._maybe_downgrade(request)
+
         outbound = self._apply_mutations(request)
 
         blocked = await self._scan_request(request, outbound)
@@ -254,6 +262,77 @@ class RequestPipeline:
             },
         )
         return None
+
+    def _maybe_downgrade(self, request: PipelineRequest) -> None:
+        """Transparent complexity-scored same-provider downgrade (#305 1b).
+
+        Only for requests that did NOT opt into a router alias. Scores the
+        prompt; if it is simple enough and a downgrade pair matches the
+        request's provider + current model (and the request is capability-safe),
+        either annotate the dry-run decision (default) or rewrite the model.
+        Never rewrites in dry-run mode.
+        """
+        routing = self._config.routing
+        downgrades = routing.downgrades
+        if not downgrades or not request.body:
+            return
+        # Skip if an alias already routed this request.
+        if ROUTED_MODEL_HEADER in request.response_annotations:
+            return
+        try:
+            body_json = json.loads(request.body)
+        except Exception:
+            return
+        if not isinstance(body_json, dict):
+            return
+        model = body_json.get("model")
+        if not isinstance(model, str) or parse_router_task(model) is not None:
+            return  # missing model, or a router: alias (handled elsewhere)
+
+        if not capability_ok(body_json):
+            self._metrics.record_routing("downgrade", "skipped_excluded")
+            return
+
+        # Fail closed: if we can't extract any prompt text (unknown body shape),
+        # don't treat the empty string as "simple" and downgrade it.
+        prompt_text = extract_prompt_text(body_json)
+        if not prompt_text.strip():
+            self._metrics.record_routing("downgrade", "skipped")
+            return
+
+        score = score_text(prompt_text, model)
+        target = select_downgrade(
+            model, request.target.provider, downgrades, score.downgrade_eligible
+        )
+        if target is None:
+            self._metrics.record_routing("downgrade", "skipped")
+            return
+
+        if routing.dry_run:
+            request.response_annotations[ROUTING_DECISION_HEADER] = sanitize_header_value(
+                f"would-route {model}->{target} tier={score.tier} score={score.score}"
+            )
+            self._metrics.record_routing("downgrade", "dry_run")
+            logger.info(
+                "Downgrade candidate (dry-run; not applied)",
+                extra={
+                    "from": model, "to": target, "tier": score.tier,
+                    "score": score.score, "client_id": request.client_id,
+                },
+            )
+            return
+
+        body_json["model"] = target
+        request.body = json.dumps(body_json).encode()
+        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(target)
+        self._metrics.record_routing("downgrade", "routed")
+        logger.info(
+            "Downgraded request to cheaper model",
+            extra={
+                "from": model, "to": target, "tier": score.tier,
+                "client_id": request.client_id,
+            },
+        )
 
     def _apply_mutations(self, request: PipelineRequest) -> bytes:
         """Apply registered body mutators and return the outbound bytes.
