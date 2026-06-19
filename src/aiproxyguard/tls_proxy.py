@@ -96,16 +96,20 @@ class TLSInterceptProxy:
         # Map allowed hostnames to their upstream config (provider name, config)
         self._host_to_upstream: dict[str, tuple[str, object]] = self._build_host_map(config)
         self._allowed_hosts: set[str] = set(self._host_to_upstream)
+        # Same response cache + cost-optimization mutators as the HTTP path.
+        from aiproxyguard.server import (
+            _build_response_cache,
+            register_cost_optimization_mutators,
+        )
+
         self._pipeline = RequestPipeline(
             config=config,
             scanner=scanner,
             policy=policy,
             metrics=metrics,
             session_getter=self._get_session,
+            cache=_build_response_cache(config),
         )
-        # Same cost-optimization mutators as the HTTP path (gated on live config)
-        from aiproxyguard.server import register_cost_optimization_mutators
-
         register_cost_optimization_mutators(self._pipeline, config)
 
     def _build_host_map(self, config: "Config") -> dict[str, tuple[str, object]]:

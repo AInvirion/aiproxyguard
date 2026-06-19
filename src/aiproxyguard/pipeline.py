@@ -38,6 +38,7 @@ import aiohttp
 if TYPE_CHECKING:
     from aiproxyguard.config import Config
 
+from aiproxyguard.cache import CachedResponse, ResponseCache
 from aiproxyguard.control_plane import get_client
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
@@ -84,6 +85,9 @@ RESPONSE_HEADERS = (
     "x-ratelimit-remaining",
     "x-ratelimit-reset",
 )
+
+# Marks a response served from (or stored to) the exact-match response cache.
+CACHE_STATUS_HEADER = "x-aiproxyguard-cache"
 
 
 @dataclass
@@ -173,12 +177,14 @@ class RequestPipeline:
         policy: PolicyEngine,
         metrics: MetricsCollector,
         session_getter: Callable[[], aiohttp.ClientSession],
+        cache: ResponseCache | None = None,
     ) -> None:
         self._config = config
         self._scanner = scanner
         self._policy = policy
         self._metrics = metrics
         self._session_getter = session_getter
+        self._cache = cache
         self._mutators: list[BodyMutator] = []
 
     def add_mutator(self, mutator: BodyMutator) -> None:
@@ -520,6 +526,29 @@ class RequestPipeline:
         retry_models = list(request.routing_retry)
         attempt_body = outbound
 
+        # Exact-match response cache (#307). Keyed on the EFFECTIVE (post-routing)
+        # request. A hit skips the upstream call entirely but STILL runs response
+        # scanning (never a policy bypass) before serving.
+        cache_key = None
+        if self._cache is not None and self._cache.enabled and self._cache_policy_ok():
+            cache_key = self._cache.compute_key(target.provider, request.path, attempt_body)
+            if cache_key is not None:
+                cached = await self._cache.get(cache_key)
+                if cached is not None:
+                    blocked = await self._scan_response(request, cached.body)
+                    if blocked is not None:
+                        return blocked
+                    headers = {
+                        "content-type": cached.content_type,
+                        CACHE_STATUS_HEADER: "hit",
+                    }
+                    headers.update(request.response_annotations)
+                    logger.info(
+                        "Response cache hit",
+                        extra={"provider": target.provider, "client_id": request.client_id},
+                    )
+                    return PipelineResult(status=cached.status, body=cached.body, headers=headers)
+
         while True:
             attempt_start = time.monotonic()
             try:
@@ -594,6 +623,23 @@ class RequestPipeline:
                     if blocked is not None:
                         return blocked
 
+                    # Store a cacheable, successful response for future exact hits
+                    # (off the response path so Redis latency never blocks the client).
+                    # Recompute the key from the FINAL served body so a 5xx fallback
+                    # to a different model is stored under that model's key, never
+                    # the originally-requested one.
+                    if cache_key is not None and 200 <= resp.status < 300:
+                        store_key = self._cache.compute_key(
+                            target.provider, request.path, attempt_body
+                        )
+                        if store_key is not None:
+                            self._schedule_cache_store(
+                                store_key,
+                                response_body,
+                                resp.headers.get("content-type", "application/json"),
+                                resp.status,
+                            )
+
                     response_headers = {
                         header: resp.headers[header]
                         for header in RESPONSE_HEADERS
@@ -601,6 +647,8 @@ class RequestPipeline:
                     }
                     # Surface request-processing annotations (e.g. routed model).
                     response_headers.update(request.response_annotations)
+                    if cache_key is not None:
+                        response_headers[CACHE_STATUS_HEADER] = "miss"
                     return PipelineResult(
                         status=resp.status,
                         body=response_body,
@@ -822,6 +870,52 @@ class RequestPipeline:
             routed_model=request.routed_target_model,
             routing_mode=request.routing_mode,
             cache_read_tokens=billed.cache_read_tokens or None,
+        )
+
+    def _cache_policy_ok(self) -> bool:
+        """Gate response caching off when the policy handles sensitive data (#307 D3).
+
+        Reads the LIVE policy engine (updated by control-plane hot pushes), not the
+        static startup config — so enabling PII/PHI detection at runtime disables
+        caching immediately. The categories dict only holds enabled categories, so
+        presence == on.
+        """
+        categories = self._policy.categories or {}
+        return "pii" not in categories and "phi" not in categories
+
+    def _schedule_cache_store(
+        self, cache_key: str, response_body: bytes, content_type: str, status: int
+    ) -> None:
+        """Fire-and-forget store of a cacheable response (keeps Redis off the response path)."""
+        asyncio.create_task(self._cache_store(cache_key, response_body, content_type, status))
+
+    async def _cache_store(
+        self, cache_key: str, response_body: bytes, content_type: str, status: int
+    ) -> None:
+        # Stash billed tokens + model alongside the body so a future hit can
+        # attribute the avoided spend (savings telemetry lands in #307 phase 2).
+        input_tokens = output_tokens = 0
+        model = None
+        try:
+            response_json = json.loads(response_body)
+            if isinstance(response_json, dict):
+                raw_model = response_json.get("model")
+                model = str(raw_model)[:100] if raw_model is not None else None
+                billed = billed_tokens(response_json)
+                if billed is not None:
+                    input_tokens, output_tokens = billed.input_tokens, billed.output_tokens
+        except Exception:
+            pass
+        await self._cache.set(
+            cache_key,
+            CachedResponse(
+                body=response_body,
+                content_type=content_type,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model=model,
+                status=status,
+            ),
         )
 
     def _report_detection(self, **kwargs: Any) -> None:

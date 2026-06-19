@@ -181,6 +181,22 @@ class CostOptimizationConfig:
 
 
 @dataclass
+class CacheConfig:
+    """Exact-match response cache (#307). Off by default; requires Redis.
+
+    ``redis_url`` points at a Redis the proxy can reach (cloud: managed; on-prem:
+    user-provided). ``ttl_seconds`` is capped at 1h at load time. ``namespace``
+    isolates this deployment's entries on a shared Redis (defaults to a hash of
+    the control-plane API key at startup when unset).
+    """
+
+    enabled: bool = False
+    redis_url: str | None = None
+    ttl_seconds: int = 3600
+    namespace: str | None = None
+
+
+@dataclass
 class RoutingConfig:
     """Smart model-routing config (#305), pushed via the ``routing`` section.
 
@@ -214,6 +230,7 @@ class Config:
     identity: IdentityConfig = field(default_factory=IdentityConfig)
     cost_optimization: CostOptimizationConfig = field(default_factory=CostOptimizationConfig)
     routing: RoutingConfig = field(default_factory=RoutingConfig)
+    cache: CacheConfig = field(default_factory=CacheConfig)
 
 
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
@@ -412,6 +429,15 @@ def load_config(path: str) -> Config:
         dry_run=_to_bool(routing_data.get("dry_run", True), default=True),
     )
 
+    cache_data = data.get("cache", {}) or {}
+    _cache_ttl = int(cache_data.get("ttl_seconds", 3600) or 3600)
+    cache = CacheConfig(
+        enabled=_to_bool(cache_data.get("enabled", False), default=False),
+        redis_url=(cache_data.get("redis_url") or None),
+        ttl_seconds=max(1, min(_cache_ttl, 3600)),  # cap at 1h (issue #307)
+        namespace=(cache_data.get("namespace") or None),
+    )
+
     return Config(
         server=server,
         upstreams=upstreams,
@@ -427,4 +453,5 @@ def load_config(path: str) -> Config:
         identity=identity,
         cost_optimization=cost_optimization,
         routing=routing,
+        cache=cache,
     )

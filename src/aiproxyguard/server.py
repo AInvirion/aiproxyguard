@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -40,6 +41,7 @@ from aiproxyguard.logging import get_logger, update_logging
 from aiproxyguard.control_plane import init_client, get_client
 from aiproxyguard.config import _to_bool
 from aiproxyguard.cost_optimization import make_cache_control_mutator
+from aiproxyguard.cache import ResponseCache
 
 logger = get_logger("server")
 
@@ -212,6 +214,42 @@ def register_control_plane_callbacks(
         cp_client.set_initial_signature_version(initial_sig_version)
 
 
+def _build_response_cache(config) -> ResponseCache:
+    """Construct the exact-match response cache (#307) from config.
+
+    Namespace = explicit ``cache.namespace`` if set, else a hash of the
+    control-plane API key (the org identity). If neither is available the cache
+    is **disabled** (fail closed): a static namespace would let two self-hosted
+    deployments sharing one Redis read each other's entries.
+    """
+    cache_cfg = getattr(config, "cache", None)
+    if cache_cfg is None:  # config predating the cache section -> caching off
+        return ResponseCache(redis_url=None, ttl_seconds=3600, namespace="default", enabled=False)
+    namespace = cache_cfg.namespace
+    if not namespace:
+        api_key = getattr(getattr(config, "control_plane", None), "api_key", "") or ""
+        if api_key:
+            namespace = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+        else:
+            if cache_cfg.enabled:
+                logger.warning(
+                    "Response cache disabled: set cache.namespace when the control "
+                    "plane is off (no API key to derive tenant isolation)."
+                )
+            return ResponseCache(
+                redis_url=cache_cfg.redis_url,
+                ttl_seconds=cache_cfg.ttl_seconds,
+                namespace="default",
+                enabled=False,
+            )
+    return ResponseCache(
+        redis_url=cache_cfg.redis_url,
+        ttl_seconds=cache_cfg.ttl_seconds,
+        namespace=namespace,
+        enabled=cache_cfg.enabled,
+    )
+
+
 async def on_startup(app: web.Application) -> None:
     """Create shared HTTP session and start control plane client."""
     app["http_session"] = aiohttp.ClientSession()
@@ -221,6 +259,7 @@ async def on_startup(app: web.Application) -> None:
         policy=app["policy"],
         metrics=app["metrics"],
         session_getter=lambda: app["http_session"],
+        cache=_build_response_cache(app["config"]),
     )
     register_cost_optimization_mutators(pipeline, app["config"])
     app["pipeline"] = pipeline

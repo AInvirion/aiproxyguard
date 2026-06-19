@@ -23,10 +23,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aiproxyguard.pipeline import (
+    CACHE_STATUS_HEADER,
     PipelineRequest,
+    PipelineResult,
     RequestPipeline,
     UpstreamTarget,
 )
+from aiproxyguard.cache import CachedResponse, is_cacheable
 
 
 @dataclass
@@ -53,10 +56,16 @@ class MockRoutingConfig:
 
 
 @dataclass
+class MockPolicyConfig:
+    categories: dict = field(default_factory=dict)
+
+
+@dataclass
 class MockConfig:
     security: MockSecurityConfig = field(default_factory=MockSecurityConfig)
     scanner: MockScannerConfig = field(default_factory=MockScannerConfig)
     routing: MockRoutingConfig = field(default_factory=MockRoutingConfig)
+    policy: MockPolicyConfig = field(default_factory=MockPolicyConfig)
 
 
 def make_scan_result(action: str = "allow") -> SimpleNamespace:
@@ -116,6 +125,7 @@ def make_pipeline(
 
     policy = MagicMock()
     policy.resolve.return_value = policy_action or scan_action
+    policy.categories = {}  # live policy categories (drives the cache PII/PHI gate)
 
     pipeline = RequestPipeline(
         config=config,
@@ -901,3 +911,144 @@ class TestDowngradeIntegrationEdges:
         )
         assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"  # not rewritten
         assert "x-aiproxyguard-routing-decision" in result.headers
+
+
+class _FakeCache:
+    """Stand-in ResponseCache for pipeline integration tests."""
+
+    def __init__(self, enabled=True, hit: CachedResponse | None = None):
+        self.enabled = enabled
+        self._hit = hit
+        self.stored: list[CachedResponse] = []
+        self.stored_keys: list[str] = []
+
+    def compute_key(self, provider, path, outbound):
+        try:
+            b = json.loads(outbound)
+        except Exception:
+            return None
+        if not isinstance(b, dict) or not is_cacheable(b):
+            return None
+        # Model-aware key so tests can prove the store key tracks the served model.
+        return f"ck:{b.get('model')}"
+
+    async def get(self, key):
+        return self._hit
+
+    async def set(self, key, resp):
+        self.stored_keys.append(key)
+        self.stored.append(resp)
+
+
+# A deterministic, cacheable request body (temperature 0, no tools/stream).
+_CACHEABLE = b'{"model": "gpt-4o-mini", "temperature": 0, "messages": [{"role": "user", "content": "hi"}]}'
+
+
+class TestResponseCache:
+    async def test_miss_forwards_and_stores(self) -> None:
+        cache = _FakeCache(hit=None)
+        body = b'{"id":"x","model":"gpt-4o-mini","usage":{"prompt_tokens":5,"completion_tokens":7}}'
+        pipeline, session = make_pipeline(session=FakeSession(FakeResponse(status=200, body=body)))
+        pipeline._cache = cache
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+        await asyncio.sleep(0)  # let the background store run
+
+        assert len(session.calls) == 1  # upstream was called
+        assert result.headers.get(CACHE_STATUS_HEADER) == "miss"
+        assert len(cache.stored) == 1
+        assert cache.stored[0].input_tokens == 5 and cache.stored[0].output_tokens == 7
+
+    async def test_hit_serves_without_upstream(self) -> None:
+        cached = CachedResponse(body=b'{"cached":true}', content_type="application/json",
+                                input_tokens=5, output_tokens=7, model="gpt-4o-mini")
+        cache = _FakeCache(hit=cached)
+        pipeline, session = make_pipeline()
+        pipeline._cache = cache
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+
+        assert len(session.calls) == 0  # upstream NOT called
+        assert result.body == b'{"cached":true}'
+        assert result.headers.get(CACHE_STATUS_HEADER) == "hit"
+
+    async def test_hit_still_runs_response_scan(self) -> None:
+        # No policy bypass: a cache hit must still pass through response scanning.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        cache = _FakeCache(hit=cached)
+        pipeline, session = make_pipeline()
+        pipeline._cache = cache
+        pipeline._scan_response = AsyncMock(return_value=PipelineResult(status=403, body=b"blocked"))
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+
+        pipeline._scan_response.assert_awaited_once()
+        assert result.status == 403  # the scan block wins over the cached body
+        assert len(session.calls) == 0
+
+    async def test_pii_policy_disables_cache(self) -> None:
+        # Reads the LIVE policy engine; enabling pii after startup disables caching.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        cache = _FakeCache(hit=cached)
+        pipeline, session = make_pipeline()
+        pipeline._cache = cache
+        pipeline._policy.categories = {"pii": {"action": "block"}}
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+
+        assert len(session.calls) == 1  # forwarded, not served from cache
+        assert CACHE_STATUS_HEADER not in result.headers
+
+    async def test_hit_preserves_stored_status(self) -> None:
+        cached = CachedResponse(b'{"ok":1}', "application/json", 1, 1, "gpt-4o-mini", status=201)
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+
+        assert result.status == 201  # not coerced to 200
+        assert result.headers.get(CACHE_STATUS_HEADER) == "hit"
+
+    async def test_non_2xx_not_stored(self) -> None:
+        cache = _FakeCache(hit=None)
+        pipeline, session = make_pipeline(
+            session=FakeSession(FakeResponse(status=400, body=b'{"error":"bad"}'))
+        )
+        pipeline._cache = cache
+
+        await pipeline.process(make_request(_CACHEABLE))
+        await asyncio.sleep(0)
+
+        assert len(cache.stored) == 0  # non-2xx never cached
+
+    async def test_fallback_stores_under_served_model_key(self) -> None:
+        # Alias routes to "a"; a 5xx forces fallback to "b". The response must be
+        # stored under b's key (the model that produced it), never a's.
+        cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
+        ok_body = b'{"model":"b","usage":{"prompt_tokens":5,"completion_tokens":9}}'
+        session = _SequenceSession([
+            FakeResponse(status=503, body=b'{"err":1}'),
+            FakeResponse(status=200, body=ok_body),
+        ])
+        pipeline, _ = make_pipeline(config=cfg, session=session)
+        cache = _FakeCache(hit=None)
+        pipeline._cache = cache
+
+        await pipeline.process(make_request(b'{"model":"router:t","temperature":0,"messages":[{"role":"user","content":"hi"}]}'))
+        await asyncio.sleep(0)
+
+        assert cache.stored_keys == ["ck:b"]  # served model, not "ck:a"
+
+    async def test_ineligible_request_not_cached(self) -> None:
+        cache = _FakeCache(hit=CachedResponse(b'{"cached":true}', "application/json", 0, 0, None))
+        pipeline, session = make_pipeline()
+        pipeline._cache = cache
+        # temperature 0.7 -> non-deterministic -> ineligible
+        body = b'{"model": "gpt-4o-mini", "temperature": 0.7, "messages": [{"role": "user", "content": "hi"}]}'
+
+        result = await pipeline.process(make_request(body))
+        await asyncio.sleep(0)
+
+        assert len(session.calls) == 1  # forwarded (no hit despite cache having data)
+        assert CACHE_STATUS_HEADER not in result.headers
+        assert len(cache.stored) == 0
