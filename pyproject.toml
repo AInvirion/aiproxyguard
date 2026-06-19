@@ -22,6 +22,7 @@ dependencies = [
     "hyperscan>=0.7.0; platform_machine == 'x86_64'",
     "google-re2>=1.1; platform_machine != 'x86_64'",
     "tiktoken>=0.7.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]
