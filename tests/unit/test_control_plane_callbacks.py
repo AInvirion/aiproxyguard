@@ -55,6 +55,7 @@ class FakeSignatures:
 @dataclass
 class FakeCostOpt:
     anthropic_prompt_cache: bool = False
+    response_cache: bool = False
 
 
 @dataclass
@@ -174,4 +175,24 @@ class TestCostOptimizationHandler:
         cfg = FakeConfig(cost_optimization=FakeCostOpt(anthropic_prompt_cache=False))
         handler = self._cost_handler(cfg)
         handler({"anthropic_prompt_cache": True})
+        assert cfg.cost_optimization.anthropic_prompt_cache is True
+
+    def test_response_cache_string_true_enables(self):
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(response_cache=False))
+        handler = self._cost_handler(cfg)
+        handler({"response_cache": "true"})
+        assert cfg.cost_optimization.response_cache is True
+
+    def test_response_cache_string_false_disables(self):
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(response_cache=True))
+        handler = self._cost_handler(cfg)
+        handler({"response_cache": "false"})
+        assert cfg.cost_optimization.response_cache is False
+
+    def test_response_cache_independent_of_prompt_cache(self):
+        # Pushing only response_cache must not disturb anthropic_prompt_cache.
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(anthropic_prompt_cache=True))
+        handler = self._cost_handler(cfg)
+        handler({"response_cache": True})
+        assert cfg.cost_optimization.response_cache is True
         assert cfg.cost_optimization.anthropic_prompt_cache is True

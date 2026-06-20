@@ -38,6 +38,36 @@ upstreams:
         assert config.server.port == 8080
         assert config.upstreams["openai"].url == "https://api.openai.com"
 
+    def test_cost_optimization_response_cache_parsed(self, tmp_path: Path) -> None:
+        """response_cache opt-in parses (incl. string-bool coercion)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  host: "0.0.0.0"
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+cost_optimization:
+  response_cache: "true"
+""")
+        config = load_config(str(config_file))
+        assert config.cost_optimization.response_cache is True
+
+    def test_cost_optimization_response_cache_defaults_off(self, tmp_path: Path) -> None:
+        """Absent response_cache defaults to opted-out (off by default, #307)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  host: "0.0.0.0"
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+""")
+        config = load_config(str(config_file))
+        assert config.cost_optimization.response_cache is False
+
     def test_env_var_substitution(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Environment variables are substituted."""
         monkeypatch.setenv("TEST_API_URL", "https://test.example.com")

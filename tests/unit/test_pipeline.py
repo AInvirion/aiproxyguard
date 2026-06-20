@@ -61,11 +61,30 @@ class MockPolicyConfig:
 
 
 @dataclass
+class MockCostOptimizationConfig:
+    anthropic_prompt_cache: bool = False
+    # Default the response-cache opt-in ON so the cache integration tests below
+    # exercise the cache; the opt-out path is covered explicitly.
+    response_cache: bool = True
+
+
+@dataclass
+class MockSignaturesConfig:
+    # Empty path -> get_signature_version returns None (no bundled signatures),
+    # which keeps register_control_plane_callbacks happy in integration tests.
+    path: str = ""
+
+
+@dataclass
 class MockConfig:
     security: MockSecurityConfig = field(default_factory=MockSecurityConfig)
     scanner: MockScannerConfig = field(default_factory=MockScannerConfig)
     routing: MockRoutingConfig = field(default_factory=MockRoutingConfig)
     policy: MockPolicyConfig = field(default_factory=MockPolicyConfig)
+    cost_optimization: MockCostOptimizationConfig = field(
+        default_factory=MockCostOptimizationConfig
+    )
+    signatures: MockSignaturesConfig = field(default_factory=MockSignaturesConfig)
 
 
 def make_scan_result(action: str = "allow") -> SimpleNamespace:
@@ -985,6 +1004,56 @@ class TestResponseCache:
         pipeline._scan_response.assert_awaited_once()
         assert result.status == 403  # the scan block wins over the cached body
         assert len(session.calls) == 0
+
+    async def test_opt_out_disables_cache(self) -> None:
+        # cost_optimization.response_cache is the live per-policy opt-in (#307
+        # phase 3): even with Redis wired and a hit available, an opted-out
+        # policy forwards upstream and never serves from cache.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        cache = _FakeCache(hit=cached)
+        pipeline, session = make_pipeline()
+        pipeline._cache = cache
+        pipeline._config.cost_optimization.response_cache = False
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+        await asyncio.sleep(0)  # let any (unexpected) background store run
+
+        assert len(session.calls) == 1  # forwarded, not served from cache
+        assert CACHE_STATUS_HEADER not in result.headers
+        assert cache.stored == []  # opted out -> nothing written to cache either
+
+    async def test_hot_toggle_via_pushed_cost_optimization(self) -> None:
+        # End-to-end: the real control-plane cost_optimization handler shares the
+        # pipeline's config, so pushing response_cache off/on stops/starts caching
+        # without a restart.
+        from aiproxyguard.server import register_control_plane_callbacks
+
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        cache = _FakeCache(hit=cached)
+        pipeline, session = make_pipeline()
+        pipeline._cache = cache
+
+        cp = MagicMock()
+        register_control_plane_callbacks(
+            cp, scanner=MagicMock(), policy=MagicMock(),
+            config=pipeline._config, metrics=MagicMock(),
+        )
+        handler = next(
+            c.args[1] for c in cp.register_section_handler.call_args_list
+            if c.args and c.args[0] == "cost_optimization"
+        )
+
+        # Push OFF -> next request forwards upstream (no hit).
+        handler({"response_cache": "false"})
+        r_off = await pipeline.process(make_request(_CACHEABLE))
+        assert len(session.calls) == 1
+        assert CACHE_STATUS_HEADER not in r_off.headers
+
+        # Push ON -> next identical request is served from cache, no new upstream call.
+        handler({"response_cache": "true"})
+        r_on = await pipeline.process(make_request(_CACHEABLE))
+        assert len(session.calls) == 1
+        assert r_on.headers.get(CACHE_STATUS_HEADER) == "hit"
 
     async def test_pii_policy_disables_cache(self) -> None:
         # Reads the LIVE policy engine; enabling pii after startup disables caching.

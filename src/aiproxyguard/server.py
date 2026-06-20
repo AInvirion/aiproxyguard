@@ -143,12 +143,20 @@ def register_control_plane_callbacks(
             config.cost_optimization.anthropic_prompt_cache = _to_bool(
                 cost_config["anthropic_prompt_cache"], default=False
             )
-            logger.info(
-                "Cost-optimization config updated",
-                extra={
-                    "anthropic_prompt_cache": config.cost_optimization.anthropic_prompt_cache
-                },
+        if "response_cache" in cost_config:
+            # Live opt-in for the response cache (#307). The pipeline reads this
+            # flag on every request, so toggling it here enables/disables caching
+            # without a restart (the Redis connection in self._cache is untouched).
+            config.cost_optimization.response_cache = _to_bool(
+                cost_config["response_cache"], default=False
             )
+        logger.info(
+            "Cost-optimization config updated",
+            extra={
+                "anthropic_prompt_cache": config.cost_optimization.anthropic_prompt_cache,
+                "response_cache": config.cost_optimization.response_cache,
+            },
+        )
 
     cp_client.register_section_handler("cost_optimization", on_cost_optimization_update)
 
