@@ -178,6 +178,11 @@ class CostOptimizationConfig:
 
     # Inject cache_control into Anthropic top-level system prompts (#304).
     anthropic_prompt_cache: bool = False
+    # Per-policy opt-in for the exact-match response cache (#307). The ``cache``
+    # section wires the infrastructure (Redis url/ttl/namespace + availability);
+    # this flag is the runtime opt-in the pipeline reads live, so the cloud can
+    # turn response caching on/off per policy without a restart or reconnect.
+    response_cache: bool = False
 
 
 @dataclass
@@ -419,6 +424,9 @@ def load_config(path: str) -> Config:
     cost_optimization = CostOptimizationConfig(
         anthropic_prompt_cache=_to_bool(
             cost_opt_data.get("anthropic_prompt_cache", False), default=False
+        ),
+        response_cache=_to_bool(
+            cost_opt_data.get("response_cache", False), default=False
         ),
     )
 

@@ -530,7 +530,12 @@ class RequestPipeline:
         # request. A hit skips the upstream call entirely but STILL runs response
         # scanning (never a policy bypass) before serving.
         cache_key = None
-        if self._cache is not None and self._cache.enabled and self._cache_policy_ok():
+        if (
+            self._cache is not None
+            and self._cache.enabled
+            and self._response_cache_opted_in()
+            and self._cache_policy_ok()
+        ):
             cache_key = self._cache.compute_key(target.provider, request.path, attempt_body)
             if cache_key is not None:
                 cache_lookup_start = time.monotonic()
@@ -912,6 +917,17 @@ class RequestPipeline:
             routing_mode=request.routing_mode,
             cache_read_tokens=billed.cache_read_tokens or None,
         )
+
+    def _response_cache_opted_in(self) -> bool:
+        """Live per-policy opt-in for the response cache (#307 phase 3).
+
+        Read fresh on every request so a control-plane push to
+        ``cost_optimization.response_cache`` enables or disables caching
+        immediately, without rebuilding the Redis-backed cache. Defensive
+        against configs predating the field (treated as opted out).
+        """
+        cost_opt = getattr(self._config, "cost_optimization", None)
+        return bool(getattr(cost_opt, "response_cache", False))
 
     def _cache_policy_ok(self) -> bool:
         """Gate response caching off when the policy handles sensitive data (#307 D3).
