@@ -56,6 +56,7 @@ class FakeSignatures:
 class FakeCostOpt:
     anthropic_prompt_cache: bool = False
     response_cache: bool = False
+    response_cache_routes: list = field(default_factory=list)
 
 
 @dataclass
@@ -196,3 +197,17 @@ class TestCostOptimizationHandler:
         handler({"response_cache": True})
         assert cfg.cost_optimization.response_cache is True
         assert cfg.cost_optimization.anthropic_prompt_cache is True
+
+    def test_response_cache_routes_pushed(self):
+        cfg = FakeConfig(cost_optimization=FakeCostOpt())
+        handler = self._cost_handler(cfg)
+        handler({"response_cache_routes": ["/openai/*", "/anthropic/v1/messages"]})
+        assert cfg.cost_optimization.response_cache_routes == ["/openai/*", "/anthropic/v1/messages"]
+
+    def test_response_cache_routes_non_list_preserves_existing(self):
+        # A malformed (non-list) value must NOT widen scope: keep the current
+        # allowlist rather than resetting it to "cache all".
+        cfg = FakeConfig(cost_optimization=FakeCostOpt(response_cache_routes=["/openai/*"]))
+        handler = self._cost_handler(cfg)
+        handler({"response_cache_routes": "nonsense"})
+        assert cfg.cost_optimization.response_cache_routes == ["/openai/*"]

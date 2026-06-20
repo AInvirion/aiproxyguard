@@ -28,6 +28,7 @@ the raw bytes are forwarded (fail-open).
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import time
 from dataclasses import dataclass, field
@@ -533,7 +534,7 @@ class RequestPipeline:
         if (
             self._cache is not None
             and self._cache.enabled
-            and self._response_cache_opted_in()
+            and self._response_cache_opted_in(request)
             and self._cache_policy_ok()
         ):
             cache_key = self._cache.compute_key(target.provider, request.path, attempt_body)
@@ -918,16 +919,29 @@ class RequestPipeline:
             cache_read_tokens=billed.cache_read_tokens or None,
         )
 
-    def _response_cache_opted_in(self) -> bool:
-        """Live per-policy opt-in for the response cache (#307 phase 3).
+    def _response_cache_opted_in(self, request: PipelineRequest) -> bool:
+        """Live per-policy (and optional per-route) opt-in for the response
+        cache (#307).
 
         Read fresh on every request so a control-plane push to
-        ``cost_optimization.response_cache`` enables or disables caching
-        immediately, without rebuilding the Redis-backed cache. Defensive
-        against configs predating the field (treated as opted out).
+        ``cost_optimization.response_cache`` (and ``response_cache_routes``)
+        enables or disables caching immediately, without rebuilding the
+        Redis-backed cache. Defensive against configs predating the fields
+        (treated as opted out).
+
+        Route scoping: an empty ``response_cache_routes`` caches every eligible
+        route; a non-empty list caches ONLY requests whose path matches one of
+        the fnmatch patterns (e.g. ``/openai/*``). The query string is ignored
+        for matching.
         """
         cost_opt = getattr(self._config, "cost_optimization", None)
-        return bool(getattr(cost_opt, "response_cache", False))
+        if not bool(getattr(cost_opt, "response_cache", False)):
+            return False
+        routes = getattr(cost_opt, "response_cache_routes", None) or []
+        if not routes:
+            return True
+        path = request.path.split("?", 1)[0]
+        return any(fnmatch.fnmatch(path, pattern) for pattern in routes)
 
     def _cache_policy_ok(self) -> bool:
         """Gate response caching off when the policy handles sensitive data (#307 D3).
