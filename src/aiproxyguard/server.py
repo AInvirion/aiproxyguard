@@ -150,11 +150,25 @@ def register_control_plane_callbacks(
             config.cost_optimization.response_cache = _to_bool(
                 cost_config["response_cache"], default=False
             )
+        if "response_cache_routes" in cost_config:
+            # Optional route allowlist (#307). A malformed (non-list) value must
+            # NOT silently widen scope from route-limited to global caching, so
+            # we keep the current allowlist instead of resetting it.
+            routes = cost_config["response_cache_routes"]
+            if isinstance(routes, list):
+                config.cost_optimization.response_cache_routes = [str(r) for r in routes]
+            else:
+                logger.warning(
+                    "Ignoring invalid response_cache_routes (not a list); "
+                    "keeping current allowlist",
+                    extra={"value": repr(routes)},
+                )
         logger.info(
             "Cost-optimization config updated",
             extra={
                 "anthropic_prompt_cache": config.cost_optimization.anthropic_prompt_cache,
                 "response_cache": config.cost_optimization.response_cache,
+                "response_cache_routes": config.cost_optimization.response_cache_routes,
             },
         )
 

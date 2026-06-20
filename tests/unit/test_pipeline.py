@@ -66,6 +66,8 @@ class MockCostOptimizationConfig:
     # Default the response-cache opt-in ON so the cache integration tests below
     # exercise the cache; the opt-out path is covered explicitly.
     response_cache: bool = True
+    # Empty route allowlist -> cache all eligible routes (default behavior).
+    response_cache_routes: list = field(default_factory=list)
 
 
 @dataclass
@@ -156,10 +158,12 @@ def make_pipeline(
     return pipeline, session
 
 
-def make_request(body: bytes, headers: dict[str, str] | None = None) -> PipelineRequest:
+def make_request(
+    body: bytes, headers: dict[str, str] | None = None, path: str = "/openai/v1/chat/completions"
+) -> PipelineRequest:
     return PipelineRequest(
         method="POST",
-        path="/openai/v1/chat/completions",
+        path=path,
         headers=headers or {"content-type": "application/json"},
         body=body,
         client_id="client-1",
@@ -1021,6 +1025,58 @@ class TestResponseCache:
         assert len(session.calls) == 1  # forwarded, not served from cache
         assert CACHE_STATUS_HEADER not in result.headers
         assert cache.stored == []  # opted out -> nothing written to cache either
+
+    async def test_route_allowlist_match_caches(self) -> None:
+        # response_cache on + a matching route pattern -> cache active.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        pipeline._config.cost_optimization.response_cache_routes = ["/openai/*"]
+
+        result = await pipeline.process(make_request(_CACHEABLE))
+
+        assert len(session.calls) == 0  # served from cache
+        assert result.headers.get(CACHE_STATUS_HEADER) == "hit"
+
+    async def test_empty_routes_caches_all(self) -> None:
+        # Explicit: an empty allowlist caches every eligible route (default).
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        pipeline._config.cost_optimization.response_cache_routes = []
+
+        result = await pipeline.process(make_request(_CACHEABLE, path="/anything/goes"))
+
+        assert len(session.calls) == 0  # served from cache regardless of path
+        assert result.headers.get(CACHE_STATUS_HEADER) == "hit"
+
+    async def test_route_match_ignores_query_string(self) -> None:
+        # The query string is stripped before matching, so an exact-path pattern
+        # still matches a request that carries a query.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        pipeline._config.cost_optimization.response_cache_routes = ["/openai/v1/chat/completions"]
+
+        result = await pipeline.process(
+            make_request(_CACHEABLE, path="/openai/v1/chat/completions?stream=false")
+        )
+
+        assert len(session.calls) == 0  # matched despite the query string
+        assert result.headers.get(CACHE_STATUS_HEADER) == "hit"
+
+    async def test_route_allowlist_miss_bypasses_cache(self) -> None:
+        # A non-empty allowlist that the request path does NOT match disables
+        # caching for that route even though response_cache is on.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        pipeline._config.cost_optimization.response_cache_routes = ["/anthropic/*"]
+
+        result = await pipeline.process(make_request(_CACHEABLE))  # path is /openai/...
+
+        assert len(session.calls) == 1  # forwarded, not served from cache
+        assert CACHE_STATUS_HEADER not in result.headers
 
     async def test_hot_toggle_via_pushed_cost_optimization(self) -> None:
         # End-to-end: the real control-plane cost_optimization handler shares the

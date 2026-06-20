@@ -67,6 +67,29 @@ upstreams:
 """)
         config = load_config(str(config_file))
         assert config.cost_optimization.response_cache is False
+        assert config.cost_optimization.response_cache_routes == []
+
+    def test_cost_optimization_response_cache_routes_parsed(self, tmp_path: Path) -> None:
+        """response_cache_routes parses into a list of string patterns (#307)."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("""
+server:
+  host: "0.0.0.0"
+  port: 8080
+upstreams:
+  openai:
+    url: "https://api.openai.com"
+cost_optimization:
+  response_cache: true
+  response_cache_routes:
+    - "/openai/*"
+    - "/anthropic/v1/messages"
+""")
+        config = load_config(str(config_file))
+        assert config.cost_optimization.response_cache_routes == [
+            "/openai/*",
+            "/anthropic/v1/messages",
+        ]
 
     def test_env_var_substitution(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Environment variables are substituted."""

@@ -183,6 +183,11 @@ class CostOptimizationConfig:
     # this flag is the runtime opt-in the pipeline reads live, so the cloud can
     # turn response caching on/off per policy without a restart or reconnect.
     response_cache: bool = False
+    # Optional route allowlist for the response cache (#307). Empty = cache every
+    # eligible route when response_cache is on; non-empty = cache ONLY requests
+    # whose path matches one of these fnmatch patterns (e.g. "/openai/*"). Lets an
+    # org scope caching to specific routes, not just on/off for the whole policy.
+    response_cache_routes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -421,12 +426,16 @@ def load_config(path: str) -> Config:
     )
 
     cost_opt_data = data.get("cost_optimization", {})
+    _cache_routes = cost_opt_data.get("response_cache_routes", []) or []
     cost_optimization = CostOptimizationConfig(
         anthropic_prompt_cache=_to_bool(
             cost_opt_data.get("anthropic_prompt_cache", False), default=False
         ),
         response_cache=_to_bool(
             cost_opt_data.get("response_cache", False), default=False
+        ),
+        response_cache_routes=(
+            [str(r) for r in _cache_routes] if isinstance(_cache_routes, list) else []
         ),
     )
 
