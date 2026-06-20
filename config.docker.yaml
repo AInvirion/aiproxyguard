@@ -74,3 +74,16 @@ cost_optimization:
   # Inject Anthropic prompt cache_control into top-level system prompts so the
   # system prefix is billed at the cached-token discount on repeat requests.
   anthropic_prompt_cache: ${AIPROXYGUARD_ANTHROPIC_PROMPT_CACHE:-false}
+  # Per-policy opt-in for the exact-match response cache (#307). Normally toggled
+  # per policy from the control plane; this is the boot default.
+  response_cache: ${AIPROXYGUARD_RESPONSE_CACHE:-false}
+
+# Exact-match response cache (#307). Off by default and inert unless BOTH the
+# infrastructure is wired (enabled + a reachable redis_url) AND a policy opts in
+# via cost_optimization.response_cache. namespace defaults to a hash of the
+# control-plane API key (per-deployment tenant isolation) when left empty.
+cache:
+  enabled: ${AIPROXYGUARD_CACHE_ENABLED:-false}
+  redis_url: "${AIPROXYGUARD_CACHE_REDIS_URL:-}"
+  ttl_seconds: ${AIPROXYGUARD_CACHE_TTL_SECONDS:-3600}
+  namespace: "${AIPROXYGUARD_CACHE_NAMESPACE:-}"
