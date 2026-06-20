@@ -533,11 +533,20 @@ class RequestPipeline:
         if self._cache is not None and self._cache.enabled and self._cache_policy_ok():
             cache_key = self._cache.compute_key(target.provider, request.path, attempt_body)
             if cache_key is not None:
+                cache_lookup_start = time.monotonic()
                 cached = await self._cache.get(cache_key)
                 if cached is not None:
+                    # Latency of serving from cache (the Redis lookup), captured
+                    # before scanning so it mirrors the miss path, which records
+                    # the upstream round-trip before response scanning.
+                    cache_duration = time.monotonic() - cache_lookup_start
                     blocked = await self._scan_response(request, cached.body)
                     if blocked is not None:
                         return blocked
+                    # Report the avoided spend only when the cached response is
+                    # actually served (scan passed). A blocked hit delivered no
+                    # value, so it must not accrue savings.
+                    self._report_cache_hit_usage(request, cached, cache_duration)
                     headers = {
                         "content-type": cached.content_type,
                         CACHE_STATUS_HEADER: "hit",
@@ -836,6 +845,38 @@ class RequestPipeline:
 
         asyncio.create_task(
             self._build_and_report_usage(cp_client, request, response_body, duration)
+        )
+
+    def _report_cache_hit_usage(
+        self, request: PipelineRequest, cached: CachedResponse, duration: float
+    ) -> None:
+        """Report a served response-cache hit as a usage event (#307 phase 2).
+
+        The upstream call was skipped, so there is no provider spend: real
+        input/output tokens are 0 and the avoided (cached) tokens carry the
+        savings the control plane prices into ``response_cache_savings_usd``.
+        Best-effort and strictly off the client response path.
+        """
+        if not (200 <= cached.status < 300):
+            return
+        cp_client = get_client()
+        if cp_client is None or not cp_client.usage_reporting_enabled:
+            return
+
+        asyncio.create_task(
+            cp_client.report_usage(
+                provider=request.target.provider,
+                endpoint=request.path,
+                model=cached.model,
+                input_tokens=0,
+                output_tokens=0,
+                latency_ms=int(duration * 1000),
+                cache_hit=True,
+                # Pass the stored billed tokens as-is: a genuine 0 must stay 0
+                # (known zero), never collapse to null (unknown).
+                cached_input_tokens=cached.input_tokens,
+                cached_output_tokens=cached.output_tokens,
+            )
         )
 
     async def _build_and_report_usage(

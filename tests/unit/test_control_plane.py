@@ -491,6 +491,27 @@ class TestUsageReporting:
         assert event.routing_mode == "applied"
         assert event.cache_read_tokens == 500
 
+    async def test_report_usage_records_cache_hit(self):
+        config = MockControlPlaneConfig()
+        client = ControlPlaneClient(config)
+        client._registered = True
+
+        await client.report_usage(
+            provider="openai",
+            model="gpt-4o-mini",
+            input_tokens=0,
+            output_tokens=0,
+            cache_hit=True,
+            cached_input_tokens=12,
+            cached_output_tokens=34,
+        )
+
+        event = client._telemetry_buffer[0]
+        assert event.cache_hit is True
+        assert event.cached_input_tokens == 12
+        assert event.cached_output_tokens == 34
+        assert event.input_tokens == 0 and event.output_tokens == 0
+
     def test_event_ids_are_unique_and_well_formed(self):
         # Distinct events get distinct ids, each a valid UUIDv4 string. (Stability
         # across flush retries is covered by test_event_id_stable_across_flush_retry.)
@@ -517,6 +538,9 @@ class TestUsageReporting:
             routed_model="gpt-4o-mini",
             routing_mode="dry_run",
             cache_read_tokens=500,
+            cache_hit=True,
+            cached_input_tokens=12,
+            cached_output_tokens=34,
         )
 
         mock_response = AsyncMock()
@@ -533,6 +557,9 @@ class TestUsageReporting:
         assert event["routed_model"] == "gpt-4o-mini"
         assert event["routing_mode"] == "dry_run"
         assert event["cache_read_tokens"] == 500
+        assert event["cache_hit"] is True
+        assert event["cached_input_tokens"] == 12
+        assert event["cached_output_tokens"] == 34
         assert event["event_id"]
 
     @pytest.mark.asyncio

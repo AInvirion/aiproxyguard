@@ -1052,3 +1052,96 @@ class TestResponseCache:
         assert len(session.calls) == 1  # forwarded (no hit despite cache having data)
         assert CACHE_STATUS_HEADER not in result.headers
         assert len(cache.stored) == 0
+
+    async def test_served_hit_reports_cache_usage_event(self) -> None:
+        # A served hit emits a usage event carrying the avoided (cached) tokens
+        # as savings, with zero real spend (the upstream call was skipped).
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        cp = MagicMock()
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(_CACHEABLE))
+            await asyncio.sleep(0)
+
+        assert len(session.calls) == 0  # upstream NOT called
+        cp.report_usage.assert_called_once()
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["cache_hit"] is True
+        assert kwargs["input_tokens"] == 0 and kwargs["output_tokens"] == 0
+        assert kwargs["cached_input_tokens"] == 5
+        assert kwargs["cached_output_tokens"] == 7
+        assert kwargs["model"] == "gpt-4o-mini"
+
+    async def test_blocked_hit_does_not_report_cache_usage(self) -> None:
+        # A cache hit that the response scanner blocks delivered no value, so it
+        # must NOT accrue savings.
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, session = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        pipeline._scan_response = AsyncMock(
+            return_value=PipelineResult(status=403, body=b"blocked")
+        )
+        cp = MagicMock()
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            result = await pipeline.process(make_request(_CACHEABLE))
+            await asyncio.sleep(0)
+
+        assert result.status == 403
+        cp.report_usage.assert_not_called()
+
+    async def test_served_hit_preserves_zero_cached_tokens(self) -> None:
+        # A genuine 0 must stay 0 (known zero), never collapse to None (unknown).
+        cached = CachedResponse(b'{"cached":true}', "application/json", 0, 0, "gpt-4o-mini")
+        pipeline, _ = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        cp = MagicMock()
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(_CACHEABLE))
+            await asyncio.sleep(0)
+
+        kwargs = cp.report_usage.call_args.kwargs
+        assert kwargs["cached_input_tokens"] == 0
+        assert kwargs["cached_output_tokens"] == 0
+
+    async def test_non_2xx_hit_does_not_report_cache_usage(self) -> None:
+        # The 2xx gate guards against attributing savings to a non-success hit.
+        cached = CachedResponse(b'{"err":1}', "application/json", 5, 7, "gpt-4o-mini", status=404)
+        pipeline, _ = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+        cp = MagicMock()
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(_CACHEABLE))
+            await asyncio.sleep(0)
+
+        cp.report_usage.assert_not_called()
+
+    async def test_served_hit_latency_excludes_scan(self) -> None:
+        # Reported hit latency is the cache-serving cost only; a slow response
+        # scan must not inflate it (mirrors the miss path's pre-scan duration).
+        cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
+        pipeline, _ = make_pipeline()
+        pipeline._cache = _FakeCache(hit=cached)
+
+        async def _slow_scan(*_args, **_kwargs):
+            await asyncio.sleep(0.05)
+            return None
+
+        pipeline._scan_response = _slow_scan
+        cp = MagicMock()
+        cp.report_usage = AsyncMock()
+
+        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
+            await pipeline.process(make_request(_CACHEABLE))
+            await asyncio.sleep(0)
+
+        # The 50ms scan must be excluded from the reported cache-hit latency.
+        assert cp.report_usage.call_args.kwargs["latency_ms"] < 50

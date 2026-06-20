@@ -164,6 +164,13 @@ class TelemetryEvent:
     routed_model: str | None = None  # chosen/would-be cheaper model
     routing_mode: str | None = None  # "applied" | "dry_run"
     cache_read_tokens: int | None = None  # Anthropic prompt-cache reads
+    # Response-cache hit (#307 phase 2): the upstream call was skipped entirely.
+    # input/output_tokens stay 0 (no real spend); cached_* are the tokens that
+    # WOULD have been billed, which the control plane prices into
+    # response_cache_savings_usd.
+    cache_hit: bool = False
+    cached_input_tokens: int | None = None
+    cached_output_tokens: int | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     # Stable per-event id for idempotent ingest dedupe. Generated once at
     # construction so it survives at-least-once flush retries unchanged.
@@ -1359,6 +1366,9 @@ class ControlPlaneClient:
         routed_model: str | None = None,
         routing_mode: str | None = None,
         cache_read_tokens: int | None = None,
+        cache_hit: bool = False,
+        cached_input_tokens: int | None = None,
+        cached_output_tokens: int | None = None,
     ) -> None:
         """Buffer a billed-token usage event for an allowed (forwarded) request.
 
@@ -1383,6 +1393,9 @@ class ControlPlaneClient:
             routed_model=routed_model,
             routing_mode=routing_mode,
             cache_read_tokens=cache_read_tokens,
+            cache_hit=cache_hit,
+            cached_input_tokens=cached_input_tokens,
+            cached_output_tokens=cached_output_tokens,
         )
 
         await self._buffer_event(event)
@@ -1508,6 +1521,9 @@ class ControlPlaneClient:
                                 "routed_model": e.routed_model,
                                 "routing_mode": e.routing_mode,
                                 "cache_read_tokens": e.cache_read_tokens,
+                                "cache_hit": e.cache_hit,
+                                "cached_input_tokens": e.cached_input_tokens,
+                                "cached_output_tokens": e.cached_output_tokens,
                                 "event_id": e.event_id,
                             }
                             for e in chunk
