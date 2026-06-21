@@ -67,6 +67,7 @@ curl -X POST http://localhost:8080/check \
 - **Detection-Only Mode** - `/check` endpoint for pre-validation
 - **Request & Response Scanning** - Regex + heuristics detection
 - **Policy Engine** - Per-category actions (block/warn/log)
+- **Cost Optimization** - Prompt caching, smart model routing, response caching, usage/spend analytics
 - **Rate Limiting** - iptables-based DDoS protection
 - **Prometheus Metrics** - Full observability at `/metrics`
 - **Control Plane** - Fleet management, automatic signature sync
@@ -83,12 +84,29 @@ curl -X POST http://localhost:8080/check \
 | `unicode-evasion` | Homoglyphs, fullwidth chars |
 | `role-manipulation` | Named character roleplay |
 
+## Cost Optimization
+
+Beyond security, AIProxyGuard cuts LLM token spend on traffic routed through the
+proxy — all opt-in, off by default:
+
+- **Prompt caching** — Anthropic `cache_control` injection for the cached-prefix discount
+- **Smart model routing** — route/downgrade to a cheaper same-provider model
+- **Response caching** — serve repeat identical requests from a Redis-backed exact-match cache (still scanned before serving)
+- **Usage & cost analytics** — billed-token spend tracking, surfaced in the control plane
+
+> Cost savings apply to requests **forwarded through the proxy** (point your
+> client's `base_url` at it). The detection-only `/check` endpoint never makes
+> the LLM call, so it scans but does not save tokens.
+
+See the [Cost Optimization guide](https://ainvirion.github.io/aiproxyguard/cost-optimization.html).
+
 ## Documentation
 
 Full documentation at **[ainvirion.github.io/aiproxyguard](https://ainvirion.github.io/aiproxyguard/)**
 
 - [Getting Started](https://ainvirion.github.io/aiproxyguard/getting-started.html)
 - [Configuration](https://ainvirion.github.io/aiproxyguard/configuration.html)
+- [Cost Optimization](https://ainvirion.github.io/aiproxyguard/cost-optimization.html)
 - [Deployment](https://ainvirion.github.io/aiproxyguard/deployment.html)
 - [API Reference](https://ainvirion.github.io/aiproxyguard/api-reference.html)
 

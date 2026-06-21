@@ -144,6 +144,28 @@ control_plane:
   heartbeat_interval: 60      # Seconds between heartbeats
   sync_signatures: true       # Auto-download new signatures
   report_telemetry: true      # Report detection metrics
+  report_usage: true          # Report provider-billed token usage for cost analytics
+
+# Cost optimization (opt-in; off by default). See docs/cost-optimization.md.
+# These apply only to traffic forwarded through the proxy (not the /check endpoint),
+# and are usually managed from the control plane (cloud Optimization page).
+cost_optimization:
+  anthropic_prompt_cache: false   # Inject Anthropic cache_control on /v1/messages system prompts
+  response_cache: false           # Per-policy opt-in for the response cache (also needs `cache` below)
+  response_cache_routes: []       # Optional fnmatch route allowlist (empty = all eligible routes)
+
+# Smart model routing (route to a cheaper same-provider model)
+routing:
+  tasks: {}                       # task -> {ordered_pool: [cheapest-first models], fallback: [...]}
+  downgrades: []                  # [{provider: openai, from: gpt-4o, to: gpt-4o-mini}]
+  dry_run: true                   # observe-only until set false
+
+# Exact-match response cache (requires Redis; off by default)
+cache:
+  enabled: false                                  # Master switch (also needs redis_url)
+  redis_url: "${AIPROXYGUARD_CACHE_REDIS_URL:-}"   # rediss://… (TLS recommended)
+  ttl_seconds: 3600                               # Capped at 1h
+  namespace: ""                                   # Empty = hash of the control-plane API key (tenant isolation)
 
 # TLS interception (advanced, optional)
 # Enables MITM proxy for inspecting HTTPS traffic

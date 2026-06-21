@@ -37,6 +37,7 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 | **Request Scanning** | Production | Professional signatures with sensibility adjustment |
 | **Response Scanning** | Production | Detect sensitive data leakage |
 | **Policy Engine** | Production | Per-category actions with thresholds |
+| **Cost Optimization** | Production | Prompt caching, smart model routing, response caching, usage/spend analytics |
 | **Prometheus Metrics** | Production | Full observability at `/metrics` |
 | **Health Endpoints** | Production | `/healthz`, `/readyz` for orchestration |
 | **Control Plane** | Beta | Fleet management, signature sync |
@@ -59,6 +60,7 @@ Then point your LLM client to `http://localhost:8080/openai/v1` instead of `http
 - [Getting Started](getting-started) - Installation and basic setup
 - [SDKs](sdks/) - Python and JavaScript client libraries
 - [Configuration](configuration) - Full config reference
+- [Cost Optimization](cost-optimization) - Cut LLM spend with caching and smart routing
 - [Proxy Deployment](proxy-deployment/) - Docker, cloud platforms, production guides
 - [API Reference](api-reference) - Endpoints and response formats
 - [Benchmarks](benchmarks) - Detection accuracy and performance metrics
