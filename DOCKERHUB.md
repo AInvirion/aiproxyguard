@@ -7,9 +7,9 @@ OpenRouter, Ollama). Point your client's `base_url` at the proxy and every
 request/response is scanned for prompt injection, jailbreaks, and other
 malicious patterns — while opt-in cost features reduce your spend.
 
-- 📚 Docs: https://ainvirion.github.io/aiproxyguard/
-- 🐙 Source: https://github.com/AInvirion/aiproxyguard
-- ☁️ Hosted control plane: https://aiproxyguard.com
+- Docs: https://ainvirion.github.io/aiproxyguard/
+- Source: https://github.com/AInvirion/aiproxyguard
+- Hosted control plane: https://aiproxyguard.com
 
 ## Quick start
 
