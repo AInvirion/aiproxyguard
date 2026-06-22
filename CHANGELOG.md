@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.61] - 2026-06-20
+
+### Added
+- **Response cache — route-level opt-in (#307).** `cost_optimization.response_cache_routes` adds an optional per-route allowlist (fnmatch patterns, e.g. `/openai/*`) on top of the per-policy `response_cache` opt-in. An empty list caches every eligible route (unchanged behavior); a non-empty list caches only requests whose path matches a pattern (query string ignored). Hot-toggleable from the control plane; a malformed (non-list) push preserves the existing allowlist so bad data can never widen scope from route-limited to global caching.
+
+## [0.2.60] - 2026-06-20
+
+### Added
+- **Exact-match response caching (#307).** Repeat identical requests are served from a Redis-backed cache, skipping the upstream call entirely. Off by default; inert unless **all** hold: a reachable `cache.redis_url` (+ `cache.enabled`), a policy that opts in via `cost_optimization.response_cache`, and an eligible request. Eligibility (`is_cacheable`): no tools/functions/`tool_choice`, no `response_format`, no streaming, no audio/non-text modalities, no multimodal content, and deterministic generation (`temperature == 0` or a `seed`). The cache key is a SHA-256 of the full canonicalized request body, namespaced per tenant (a hash of the control-plane API key, or explicit `cache.namespace`) + provider + path — so any field affecting output yields a distinct key and tenants can never collide; the cache fails closed (disabled) if no namespace can be derived. TTL is capped at 1h. **Never a policy bypass:** a cached response still runs response scanning before it is served. **Auditable:** a cache hit emits a `usage` telemetry event (`cache_hit=true`, zero real spend; the avoided tokens are priced into response-cache savings by the control plane). Graceful degradation: any Redis error disables the cache for the process (logged once) rather than failing a request. HTTP and TLS-intercept transports both supported. Configured via the new `cache` section + `cost_optimization.response_cache` (env: `AIPROXYGUARD_CACHE_ENABLED`, `AIPROXYGUARD_CACHE_REDIS_URL`, `AIPROXYGUARD_CACHE_TTL_SECONDS`, `AIPROXYGUARD_CACHE_NAMESPACE`, `AIPROXYGUARD_RESPONSE_CACHE`). Requires `redis>=5.0.0`.
+
+## [0.2.59] - 2026-06-18
+
+### Added
+- **Optimization-savings provenance on usage telemetry.** Usage events now carry smart-routing provenance (`requested_model` / `routed_model` / `routing_mode`, with correct attribution when an alias falls back across an upstream 5xx), Anthropic prompt-cache reads (`cache_read_input_tokens`, reported apart from `input_tokens` so there is no double-count), and a stable per-event `event_id` (uuid4) for idempotent control-plane ingest across at-least-once retries. All fields are additive and backward-compatible, letting the control plane attribute routing/cache savings on forwarded requests (usage events fire on any billable upstream completion, even if the response is later blocked).
+
+## [0.2.58] - 2026-06-18
+
+### Added
+- **Smart model routing — phase 1b (#305): complexity-scored same-provider downgrades.** A deterministic 7-dimension scorer routes simple requests (that did not opt into a `router:<task>` alias) to a cheaper model when a downgrade pair is configured (`routing.downgrades`). Ships **behind dry-run by default** — it emits an `x-aiproxyguard-routing-decision` header without rewriting until explicitly enabled (`routing.dry_run: false`). Short-but-complex prompts (any code/reasoning/analysis/technical signal) are never downgraded; tool/multimodal/streaming/empty-prompt requests are excluded.
+
+## [0.2.57] - 2026-06-17
+
+### Added
+- **Smart model routing — phase 1a (#305): `model: "router:<task>"` aliases.** The proxy resolves a task's cheapest-first model pool (`routing.tasks`) to the first capable model, rewrites the model before forwarding, reports the choice via the `x-aiproxyguard-routed-model` header, fails closed (400) on an unknown task, and retries the next pool/fallback model on an upstream 5xx (rescanning each forwarded body). Dormant until the control plane serves a `routing` config section.
+
+## [0.2.56] - 2026-06-17
+
+### Added
+- **Policy `scan_request` / `scan_response` runtime toggles (#71).** Previously surfaced as "unrecognized config section" warnings and never honored. `scan_request` gates scanning of proxied requests (HTTP and TLS) independent of the global switch and the manual `/check` endpoint; `scan_response` enables/disables response scanning (reconstructing the response scanner on enable). `version` is now treated as config metadata (no longer warned), falsy scalar sections (e.g. `scan_request: false`) apply, and an explicit `section: null` is skipped.
+
+## [0.2.55] - 2026-06-17
+
+### Fixed
+- **Keep the highest entitled ML tier active across model syncs (#69).** Enterprise accounts were running the `pro` sklearn classifier instead of their entitled `enterprise` ONNX model: the proxy applied each entitled bundle's embedded model last-wins, so bundle order `free → enterprise → pro` clobbered the enterprise model. Model selection is now highest-tier-wins, with a per-pass reset so legitimate tier downgrades still take effect. Verified end-to-end against the production control plane.
+
 ## [0.2.54] - 2026-06-16
 
 ### Added

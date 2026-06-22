@@ -115,6 +115,27 @@ control_plane:
   heartbeat_interval: 60                                      # Seconds between heartbeats
   sync_signatures: true                                       # Auto-sync signatures from control plane
   report_telemetry: true                                      # Report detection metrics
+  report_usage: true                                          # Report provider-billed token usage (cost analytics)
+
+# Cost optimization (opt-in; off by default). See the Cost Optimization guide.
+# Usually managed from the control plane (cloud Optimization page).
+cost_optimization:
+  anthropic_prompt_cache: false   # Inject Anthropic cache_control on /v1/messages system prompts
+  response_cache: false           # Per-policy opt-in for the exact-match response cache (needs `cache` below)
+  response_cache_routes: []       # Optional fnmatch route allowlist (empty = all eligible routes)
+
+# Smart model routing (#305). Route to a cheaper same-provider model.
+routing:
+  tasks: {}                       # task -> {ordered_pool: [...cheapest first], fallback: [...]}
+  downgrades: []                  # [{provider, from, to}] complexity-scored downgrades
+  dry_run: true                   # observe-only (emit headers, don't rewrite) until set false
+
+# Exact-match response cache (#307). Requires Redis; off by default.
+cache:
+  enabled: false                                       # Master switch (also needs redis_url)
+  redis_url: "${AIPROXYGUARD_CACHE_REDIS_URL:-}"        # rediss://… (TLS recommended)
+  ttl_seconds: 3600                                    # Capped at 1h
+  namespace: ""                                        # Empty = hash of the control-plane API key (tenant isolation)
 
 # TLS interception (optional, advanced)
 tls:
@@ -370,6 +391,25 @@ Each detection category has a configurable **threshold** (0.0-1.0) that controls
 ### Modifying Thresholds
 
 Thresholds are configured in the cloud portal under **Policies > Detection Rules**. Changes sync to all fleet instances within 60 seconds.
+
+## Cost Optimization
+
+AIProxyGuard can reduce LLM token spend on traffic routed **through the proxy**
+(forward-proxy mode). All features are off by default and are usually managed
+from the control plane. See the full [Cost Optimization](cost-optimization)
+guide for details and savings reporting.
+
+| Section / key | Purpose | Default |
+|---------------|---------|---------|
+| `cost_optimization.anthropic_prompt_cache` | Inject Anthropic `cache_control` for cached-prefix discount | `false` |
+| `routing.tasks` / `routing.downgrades` / `routing.dry_run` | Route/downgrade to a cheaper same-provider model | empty / dry-run |
+| `cache.*` | Redis-backed exact-match response cache (`enabled`, `redis_url`, `ttl_seconds`, `namespace`) | disabled |
+| `cost_optimization.response_cache` / `response_cache_routes` | Per-policy (and per-route) opt-in for the response cache | `false` / all routes |
+| `control_plane.report_usage` | Report billed-token usage for cost analytics | `true` |
+
+> These apply only to requests forwarded through the proxy. The detection-only
+> `/check` endpoint (and SDK `.check()` calls) never make the LLM call, so they
+> get security scanning but **no cost savings**.
 
 ## Rate Limiting (DDoS Protection)
 
