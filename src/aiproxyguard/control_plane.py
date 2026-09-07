@@ -22,10 +22,11 @@ import logging
 import platform
 import tarfile
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -171,7 +172,7 @@ class TelemetryEvent:
     cache_hit: bool = False
     cached_input_tokens: int | None = None
     cached_output_tokens: int | None = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     # Stable per-event id for idempotent ingest dedupe. Generated once at
     # construction so it survives at-least-once flush retries unchanged.
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -582,12 +583,12 @@ class ControlPlaneClient:
         even if the signature version hasn't changed. On restart, the proxy
         can still decrypt cached bundles with refreshed licenses.
         """
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         if not self._bundle_licenses:
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         refresh_threshold = timedelta(hours=24)
 
         for bundle_id, license_data in list(self._bundle_licenses.items()):
@@ -601,7 +602,7 @@ class ControlPlaneClient:
                     expires_at_str.replace("Z", "+00:00")
                 )
                 if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                    expires_at = expires_at.replace(tzinfo=UTC)
 
                 time_remaining = expires_at - now
 

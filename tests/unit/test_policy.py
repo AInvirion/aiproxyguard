@@ -14,9 +14,10 @@
 
 """Tests for policy engine."""
 
+import pytest
+
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScanResult
-import pytest
 
 
 class TestPolicyEngine:

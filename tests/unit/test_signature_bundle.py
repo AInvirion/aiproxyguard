@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from aiproxyguard.signatures.bundle import SignatureBundle, SignatureBundleSet
 from aiproxyguard.signatures.models import Signature, SignatureSet
@@ -62,7 +62,7 @@ class TestSignatureBundle:
 
     def test_create_paid_bundle_not_expired(self) -> None:
         """Test creating a paid bundle that hasn't expired."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         bundle = SignatureBundle(
             bundle_id="sig-pro-v1",
             version="2024.03.26",
@@ -83,7 +83,7 @@ class TestSignatureBundle:
 
     def test_expired_bundle(self) -> None:
         """Test that expired bundle is detected."""
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         bundle = SignatureBundle(
             bundle_id="sig-expired",
             version="2024.01.01",
@@ -124,8 +124,8 @@ class TestSignatureBundleSet:
 
     def test_get_active_signatures(self) -> None:
         """Test getting active signatures excludes expired."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        future = datetime.now(UTC) + timedelta(days=30)
+        past = datetime.now(UTC) - timedelta(hours=1)
 
         bundles = [
             SignatureBundle(
@@ -160,7 +160,7 @@ class TestSignatureBundleSet:
 
     def test_get_earliest_expiration(self) -> None:
         """Test getting earliest expiration."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         soon = now + timedelta(days=7)
         later = now + timedelta(days=30)
 
@@ -209,7 +209,7 @@ class TestSignatureBundleSet:
 
     def test_get_expiring_soon(self) -> None:
         """Test getting bundles expiring soon."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         bundles = [
             SignatureBundle(
                 bundle_id="free",
@@ -270,7 +270,7 @@ class TestSignatureBundleSet:
 
     def test_repr(self) -> None:
         """Test string representation."""
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         bundles = [
             SignatureBundle(
                 bundle_id="active",

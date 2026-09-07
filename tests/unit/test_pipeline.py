@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from aiproxyguard.cache import CachedResponse, is_cacheable
 from aiproxyguard.pipeline import (
     CACHE_STATUS_HEADER,
     PipelineRequest,
@@ -29,7 +30,6 @@ from aiproxyguard.pipeline import (
     RequestPipeline,
     UpstreamTarget,
 )
-from aiproxyguard.cache import CachedResponse, is_cacheable
 
 
 @dataclass
@@ -112,7 +112,7 @@ class FakeResponse:
     async def read(self) -> bytes:
         return self._body
 
-    async def __aenter__(self) -> "FakeResponse":
+    async def __aenter__(self) -> FakeResponse:
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -1258,7 +1258,6 @@ class TestResponseCache:
 
         async def _slow_scan(*_args, **_kwargs):
             await asyncio.sleep(0.05)
-            return None
 
         pipeline._scan_response = _slow_scan
         cp = MagicMock()

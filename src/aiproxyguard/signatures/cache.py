@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -117,7 +117,7 @@ def save_bundle_cache(
         # Save metadata
         metadata = {
             "bundle_id": bundle_id,
-            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
             "expires_at": license_data.get("expires_at"),
             "version": license_data.get("bundle_version", license_data.get("version", "")),
             "cache_mode": cache_mode,
@@ -163,7 +163,7 @@ def save_bundle_license(bundle_id: str, license_data: dict[str, Any]) -> bool:
             metadata = {"bundle_id": bundle_id}
 
         metadata["expires_at"] = license_data.get("expires_at")
-        metadata["license_refreshed_at"] = datetime.now(timezone.utc).isoformat()
+        metadata["license_refreshed_at"] = datetime.now(UTC).isoformat()
         metadata_file.write_text(json.dumps(metadata, indent=2))
 
         logger.debug(f"Refreshed license for cached bundle {bundle_id}")
@@ -204,7 +204,7 @@ def load_bundle_cache(bundle_id: str) -> tuple[bytes, dict[str, Any]] | None:
             expires_at = datetime.fromisoformat(
                 expires_at_str.replace("Z", "+00:00")
             )
-            if datetime.now(timezone.utc) > expires_at:
+            if datetime.now(UTC) > expires_at:
                 logger.info(f"Cached license for {bundle_id} expired at {expires_at}")
                 return None
 
@@ -280,7 +280,7 @@ def clear_expired_cache() -> int:
         Number of bundles removed
     """
     removed = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for bundle_id in list_cached_bundles():
         try:
@@ -327,7 +327,7 @@ def get_cache_stats() -> dict[str, Any]:
         total_bundles = 0
         total_size = 0
         expired_bundles = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for bundle_dir in bundles_dir.iterdir():
             if not bundle_dir.is_dir():

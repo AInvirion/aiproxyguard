@@ -13,17 +13,19 @@
 # limitations under the License.
 
 from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from aiproxyguard.config import MLClassifierConfig, ScannerConfig
     from aiproxyguard.signatures.models import SignatureSet
 from aiproxyguard.logging import get_logger
-from aiproxyguard.scanner.regex import RegexScanner
 from aiproxyguard.scanner.heuristics import HeuristicsScanner
-from aiproxyguard.scanner.response import ResponseScanner, ResponseScanResult
 from aiproxyguard.scanner.ml import MLClassifier
+from aiproxyguard.scanner.regex import RegexScanner
+from aiproxyguard.scanner.response import ResponseScanner, ResponseScanResult
 
 logger = get_logger("scanner.pipeline")
 

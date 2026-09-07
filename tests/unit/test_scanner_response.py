@@ -15,18 +15,19 @@
 """Tests for response scanner."""
 
 import asyncio
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
+from aiproxyguard.config import ResponseScannerConfig
 from aiproxyguard.scanner.response import (
+    ResponseBlockedError,
+    ResponseScanMode,
     ResponseScanner,
     ResponseScanResult,
-    ResponseScanMode,
     SSEResponseHandler,
-    ResponseBlockedError,
     scan_streaming_response,
 )
-from aiproxyguard.config import ResponseScannerConfig
 from aiproxyguard.signatures.models import Signature, SignatureSet
 
 

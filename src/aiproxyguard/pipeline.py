@@ -31,8 +31,9 @@ import asyncio
 import fnmatch
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
@@ -40,11 +41,11 @@ if TYPE_CHECKING:
     from aiproxyguard.config import Config
 
 from aiproxyguard.cache import CachedResponse, ResponseCache
+from aiproxyguard.complexity import extract_prompt_text, score_text
 from aiproxyguard.control_plane import get_client
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.policy import PolicyEngine
-from aiproxyguard.complexity import extract_prompt_text, score_text
 from aiproxyguard.routing import (
     ROUTED_MODEL_HEADER,
     ROUTING_DECISION_HEADER,
@@ -173,7 +174,7 @@ class RequestPipeline:
 
     def __init__(
         self,
-        config: "Config",
+        config: Config,
         scanner: ScannerPipeline,
         policy: PolicyEngine,
         metrics: MetricsCollector,
@@ -489,7 +490,7 @@ class RequestPipeline:
                         "signature_id": scan_result.signature_id,
                     },
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Scanner timed out - use failure mode
             scan_duration = time.monotonic() - scan_start
             self._metrics.record_scan("pipeline", "timeout", scan_duration)
@@ -814,7 +815,7 @@ class RequestPipeline:
                         "client_id": request.client_id,
                     },
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             scan_duration = time.monotonic() - scan_start
             self._metrics.record_scan("response", "timeout", scan_duration)
             logger.warning(

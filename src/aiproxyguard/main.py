@@ -22,7 +22,7 @@ import sys
 
 from aiproxyguard import __version__
 from aiproxyguard.config import load_config
-from aiproxyguard.logging import setup_logging, get_logger
+from aiproxyguard.logging import get_logger, setup_logging
 from aiproxyguard.server import run_server
 
 

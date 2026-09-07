@@ -13,17 +13,19 @@
 # limitations under the License.
 
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
+
 from aiproxyguard.scanner.decoder import (
     count_base64_segments,
-    has_url_encoding,
-    has_zero_width_chars,
-    strip_zero_width,
-    has_hex_escapes,
     decode_hex_escapes,
     decode_rot13,
+    has_hex_escapes,
+    has_url_encoding,
+    has_zero_width_chars,
     strip_non_letters,
+    strip_zero_width,
 )
 
 

@@ -13,9 +13,11 @@
 # limitations under the License.
 
 import pytest
+
+from aiproxyguard.config import ScannerConfig
 from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.signatures.models import Signature, SignatureSet
-from aiproxyguard.config import ScannerConfig
+
 
 @pytest.fixture
 def signatures() -> SignatureSet:
@@ -67,7 +69,8 @@ class TestMLTierSelection:
 
     def _pipeline_with_ml(self):
         from unittest.mock import MagicMock
-        from aiproxyguard.config import ScannerConfig, ResponseScannerConfig, MLClassifierConfig
+
+        from aiproxyguard.config import MLClassifierConfig, ResponseScannerConfig, ScannerConfig
         from aiproxyguard.scanner.pipeline import ScannerPipeline
         from aiproxyguard.signatures.models import SignatureSet
         cfg = ScannerConfig(enabled=True, regex=False, heuristics=False, ml_classifier=True,
@@ -108,7 +111,7 @@ class TestMLTierSelection:
         assert p.load_ml_from_bytes(b"x", model_config={"model_id": "no-tier"}) is True
 
     def test_no_classifier_returns_false(self):
-        from aiproxyguard.config import ScannerConfig, ResponseScannerConfig
+        from aiproxyguard.config import ResponseScannerConfig, ScannerConfig
         from aiproxyguard.scanner.pipeline import ScannerPipeline
         from aiproxyguard.signatures.models import SignatureSet
         p = ScannerPipeline(ScannerConfig(enabled=True, regex=False, heuristics=False,
@@ -146,7 +149,7 @@ class TestScanToggles:
     """Runtime request/response scanning toggles (policy scan_request/scan_response)."""
 
     def _pipeline(self, response_enabled=False):
-        from aiproxyguard.config import ScannerConfig, ResponseScannerConfig
+        from aiproxyguard.config import ResponseScannerConfig, ScannerConfig
         from aiproxyguard.scanner.pipeline import ScannerPipeline
         from aiproxyguard.signatures.models import SignatureSet
         cfg = ScannerConfig(enabled=True, regex=False, heuristics=False,

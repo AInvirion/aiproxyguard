@@ -18,16 +18,16 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from aiproxyguard.crypto.license import (
     License,
-    parse_license,
+    _parse_iso_timestamp,
     is_license_valid,
     parse_encrypted_header,
-    _parse_iso_timestamp,
+    parse_license,
 )
 
 
@@ -50,7 +50,7 @@ class TestParseIsoTimestamp:
     def test_parse_naive_assumes_utc(self) -> None:
         """Test that naive timestamps are assumed UTC."""
         result = _parse_iso_timestamp("2024-03-26T12:00:00")
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
 
 class TestParseLicense:
@@ -137,7 +137,7 @@ class TestIsLicenseValid:
 
     def test_expired_license(self) -> None:
         """Test that expired license is invalid."""
-        past = datetime.now(timezone.utc) - timedelta(days=1)
+        past = datetime.now(UTC) - timedelta(days=1)
         license = License(
             license_id="lic_123",
             license_type="ml_model",
@@ -166,7 +166,7 @@ class TestIsLicenseValid:
 
     def test_instance_bound_license_valid(self) -> None:
         """Test that instance-bound license is valid when instance matches."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         license = License(
             license_id="lic_123",
             license_type="signature_bundle",
@@ -175,7 +175,7 @@ class TestIsLicenseValid:
             account_id="acc_789",
             tier="enterprise",
             dek=b"0" * 32,
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
             expires_at=future,
             signature="sig_abc",
             bound_instance_id="instance_abc123",
@@ -196,7 +196,7 @@ class TestIsLicenseValid:
 
     def test_instance_bound_license_wrong_instance(self) -> None:
         """Test that instance-bound license is invalid on different instance."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         license = License(
             license_id="lic_123",
             license_type="signature_bundle",
@@ -205,7 +205,7 @@ class TestIsLicenseValid:
             account_id="acc_789",
             tier="enterprise",
             dek=b"0" * 32,
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
             expires_at=future,
             signature="sig_abc",
             bound_instance_id="instance_abc123",
@@ -231,7 +231,7 @@ class TestIsLicenseValid:
 
     def test_instance_bound_license_no_instance_provided(self) -> None:
         """Test that instance-bound license fails if no instance ID provided."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         license = License(
             license_id="lic_123",
             license_type="signature_bundle",
@@ -240,7 +240,7 @@ class TestIsLicenseValid:
             account_id="acc_789",
             tier="enterprise",
             dek=b"0" * 32,
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
             expires_at=future,
             signature="sig_abc",
             bound_instance_id="instance_abc123",
@@ -255,7 +255,7 @@ class TestIsLicenseValid:
 
     def test_unbound_license_works_anywhere(self) -> None:
         """Test that unbound license works without instance_id."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         license = License(
             license_id="lic_123",
             license_type="signature_bundle",
@@ -264,7 +264,7 @@ class TestIsLicenseValid:
             account_id="acc_789",
             tier="pro",
             dek=b"0" * 32,
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
             expires_at=future,
             signature="sig_abc",
             bound_instance_id=None,  # Not bound

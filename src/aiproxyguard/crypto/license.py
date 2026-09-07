@@ -34,7 +34,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def _parse_iso_timestamp(timestamp_str: str) -> datetime:
 
     # Ensure timezone awareness - if naive, assume UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
 
     return dt
 
@@ -231,7 +231,7 @@ def is_license_valid(
         return False, "Invalid signature"
 
     # Check expiration
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if now > license.expires_at:
         return False, f"License expired at {license.expires_at.isoformat()}"
 

@@ -20,7 +20,7 @@ import base64
 import hashlib
 import json
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -32,7 +32,7 @@ class TestParseLicense:
         """Test parsing a valid license dict."""
         from aiproxyguard.scanner.ml.license import parse_license
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires = now + timedelta(days=7)
 
         license_data = {
@@ -73,10 +73,10 @@ class TestLicenseValidation:
 
     def test_expired_license(self) -> None:
         """Test that expired license is rejected."""
-        from aiproxyguard.scanner.ml.license import parse_license, is_license_valid
+        from aiproxyguard.scanner.ml.license import is_license_valid, parse_license
 
-        past = datetime.now(timezone.utc) - timedelta(days=1)
-        expired = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(days=1)
+        expired = datetime.now(UTC) - timedelta(hours=1)
 
         license_data = {
             "license_id": "test-license",

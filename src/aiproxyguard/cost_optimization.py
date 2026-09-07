@@ -26,7 +26,8 @@ payload that is actually forwarded.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -43,7 +44,7 @@ _ANTHROPIC_PROVIDER = "anthropic"
 _EPHEMERAL = {"type": "ephemeral"}
 
 
-def _is_anthropic_messages(target: "UpstreamTarget") -> bool:
+def _is_anthropic_messages(target: UpstreamTarget) -> bool:
     """True only for an Anthropic-bound Messages API request.
 
     cache_control on a top-level ``system`` is a Messages API construct; scope
@@ -57,8 +58,8 @@ def _is_anthropic_messages(target: "UpstreamTarget") -> bool:
 
 
 def inject_anthropic_cache_control(
-    body_json: dict[str, Any], target: "UpstreamTarget"
-) -> "dict[str, Any] | None":
+    body_json: dict[str, Any], target: UpstreamTarget
+) -> dict[str, Any] | None:
     """Add cache_control to the top-level Anthropic ``system`` prompt.
 
     Phase 1 scope: only a top-level ``system`` that is a non-empty **string**
@@ -99,8 +100,8 @@ def inject_anthropic_cache_control(
 
 
 def make_cache_control_mutator(
-    config: "Config",
-) -> Callable[[dict[str, Any], "UpstreamTarget"], "dict[str, Any] | None"]:
+    config: Config,
+) -> Callable[[dict[str, Any], UpstreamTarget], dict[str, Any] | None]:
     """Build a pipeline mutator gated on the live cost-optimization config.
 
     The returned closure reads ``config.cost_optimization.anthropic_prompt_cache``
@@ -109,8 +110,8 @@ def make_cache_control_mutator(
     """
 
     def mutator(
-        body_json: dict[str, Any], target: "UpstreamTarget"
-    ) -> "dict[str, Any] | None":
+        body_json: dict[str, Any], target: UpstreamTarget
+    ) -> dict[str, Any] | None:
         if not config.cost_optimization.anthropic_prompt_cache:
             return None
         return inject_anthropic_cache_control(body_json, target)

@@ -13,14 +13,16 @@
 # limitations under the License.
 
 import pytest
+
 from aiproxyguard.scanner.regex import (
     HyperscanScanner,
-    RegexScanner,
     PythonReScanner,
+    RegexScanner,
     _needs_unicode_fallback,
     get_regex_engine,
 )
 from aiproxyguard.signatures.models import Signature, SignatureSet
+
 
 @pytest.fixture
 def signatures() -> SignatureSet:

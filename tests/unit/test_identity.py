@@ -15,6 +15,7 @@
 """Tests for client identity resolution."""
 
 import logging
+
 import pytest
 
 from aiproxyguard.identity import IdentityResolver

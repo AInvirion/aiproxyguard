@@ -195,7 +195,7 @@ class HyperscanScanner(BaseRegexScanner):
                 logger.error(f"Failed to compile Hyperscan database: {e}")
                 self._db = None
 
-    def _get_scratch(self) -> "hyperscan.Scratch | None":  # type: ignore[name-defined]
+    def _get_scratch(self) -> hyperscan.Scratch | None:  # type: ignore[name-defined]
         """Get or create a thread-local scratch space for the current database."""
         import hyperscan
 

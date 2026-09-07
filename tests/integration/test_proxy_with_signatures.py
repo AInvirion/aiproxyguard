@@ -29,7 +29,6 @@ from aiproxyguard.config import MLClassifierConfig, ScannerConfig
 from aiproxyguard.scanner.pipeline import ScannerPipeline
 from aiproxyguard.signatures.models import Signature, SignatureSet
 
-
 # Path to the signatures repo (relative to this test file)
 SIGNATURES_REPO = Path(__file__).parent.parent.parent.parent / "aiproxyguard-signatures"
 
