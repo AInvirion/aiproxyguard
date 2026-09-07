@@ -76,11 +76,7 @@ class TestCapabilityOk:
         assert capability_ok(body) is False
 
     def test_text_content_blocks_are_capable(self) -> None:
-        body = {
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": "hi"}]}
-            ]
-        }
+        body = {"messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]}
         assert capability_ok(body) is True
 
     def test_string_content_is_capable(self) -> None:

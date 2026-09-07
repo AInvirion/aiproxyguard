@@ -67,7 +67,7 @@ def parse_router_task(model: Any) -> str | None:
     """Return the task name if ``model`` is a ``router:<task>`` alias, else None."""
     if not isinstance(model, str) or not model.startswith(ROUTER_PREFIX):
         return None
-    task = model[len(ROUTER_PREFIX):].strip()
+    task = model[len(ROUTER_PREFIX) :].strip()
     return task or None
 
 

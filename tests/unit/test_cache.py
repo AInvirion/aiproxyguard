@@ -10,7 +10,11 @@ from aiproxyguard.cache import CachedResponse, ResponseCache, is_cacheable
 
 
 def body(**ov):
-    base = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}], "temperature": 0}
+    base = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": "hi"}],
+        "temperature": 0,
+    }
     base.update(ov)
     return base
 
@@ -70,7 +74,9 @@ class TestComputeKey:
 
     def test_none_when_ineligible(self):
         c = self._cache()
-        assert c.compute_key("openai", "/v1/chat", json.dumps(body(temperature=0.9)).encode()) is None
+        assert (
+            c.compute_key("openai", "/v1/chat", json.dumps(body(temperature=0.9)).encode()) is None
+        )
 
     def test_deterministic_same_key(self):
         c = self._cache()
@@ -80,10 +86,15 @@ class TestComputeKey:
     def test_key_varies_by_model_params_messages(self):
         c = self._cache()
         base = c.compute_key("openai", "/v1/chat", json.dumps(body()).encode())
-        assert base != c.compute_key("openai", "/v1/chat", json.dumps(body(model="gpt-4o")).encode())
+        assert base != c.compute_key(
+            "openai", "/v1/chat", json.dumps(body(model="gpt-4o")).encode()
+        )
         assert base != c.compute_key("openai", "/v1/chat", json.dumps(body(seed=1)).encode())
-        assert base != c.compute_key("openai", "/v1/chat",
-                                     json.dumps(body(messages=[{"role": "user", "content": "bye"}])).encode())
+        assert base != c.compute_key(
+            "openai",
+            "/v1/chat",
+            json.dumps(body(messages=[{"role": "user", "content": "bye"}])).encode(),
+        )
 
     def test_tenant_namespace_isolates(self):
         b = json.dumps(body()).encode()
@@ -103,7 +114,9 @@ class TestComputeKey:
         # proves we hash the whole body, not a hand-picked subset.
         c = self._cache()
         base = c.compute_key("openai", "/v1/chat", json.dumps(body()).encode())
-        with_bias = c.compute_key("openai", "/v1/chat", json.dumps(body(logit_bias={"50256": -1})).encode())
+        with_bias = c.compute_key(
+            "openai", "/v1/chat", json.dumps(body(logit_bias={"50256": -1})).encode()
+        )
         assert base != with_bias
 
 
@@ -127,8 +140,13 @@ class TestStorage:
     async def test_set_then_get_roundtrip(self):
         c = ResponseCache(redis_url="redis://x", enabled=True, namespace="ns", ttl_seconds=1800)
         c._redis = _FakeRedis()
-        resp = CachedResponse(body=b'{"ok":true}', content_type="application/json",
-                              input_tokens=12, output_tokens=34, model="gpt-4o-mini")
+        resp = CachedResponse(
+            body=b'{"ok":true}',
+            content_type="application/json",
+            input_tokens=12,
+            output_tokens=34,
+            model="gpt-4o-mini",
+        )
         await c.set("k1", resp)
         assert c._redis.last_ex == 1800  # ttl applied
         got = await c.get("k1")
@@ -166,23 +184,35 @@ class TestBuildResponseCache:
 
     def _cfg(self, cache_cfg, api_key=""):
         from types import SimpleNamespace
+
         return SimpleNamespace(cache=cache_cfg, control_plane=SimpleNamespace(api_key=api_key))
 
     def test_disabled_when_no_namespace_and_no_api_key(self):
         from aiproxyguard.config import CacheConfig
         from aiproxyguard.server import _build_response_cache
-        c = _build_response_cache(self._cfg(CacheConfig(enabled=True, redis_url="redis://x"), api_key=""))
+
+        c = _build_response_cache(
+            self._cfg(CacheConfig(enabled=True, redis_url="redis://x"), api_key="")
+        )
         assert c.enabled is False  # fail closed: no way to isolate tenants
 
     def test_namespace_derived_from_api_key(self):
         from aiproxyguard.config import CacheConfig
         from aiproxyguard.server import _build_response_cache
-        c = _build_response_cache(self._cfg(CacheConfig(enabled=True, redis_url="redis://x"), api_key="apg_secret"))
+
+        c = _build_response_cache(
+            self._cfg(CacheConfig(enabled=True, redis_url="redis://x"), api_key="apg_secret")
+        )
         assert c.enabled is True
         assert c.namespace not in ("", "default") and len(c.namespace) == 16
 
     def test_explicit_namespace_used(self):
         from aiproxyguard.config import CacheConfig
         from aiproxyguard.server import _build_response_cache
-        c = _build_response_cache(self._cfg(CacheConfig(enabled=True, redis_url="redis://x", namespace="org-x"), api_key=""))
+
+        c = _build_response_cache(
+            self._cfg(
+                CacheConfig(enabled=True, redis_url="redis://x", namespace="org-x"), api_key=""
+            )
+        )
         assert c.enabled is True and c.namespace == "org-x"

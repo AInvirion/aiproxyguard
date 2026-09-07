@@ -260,7 +260,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="https://aiproxyguard-xxxxx-uc.a.run.app/openai/v1",
-    api_key=os.environ["OPENAI_API_KEY"]
+    api_key=os.environ["OPENAI_API_KEY"],
 )
 ```
 

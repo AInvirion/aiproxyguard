@@ -51,16 +51,21 @@ ANTHROPIC_NON_MESSAGES = FakeTarget(
 
 class TestInjectAnthropicCacheControl:
     def test_top_level_system_string_converted_with_cache_control(self):
-        body = {"model": "claude-sonnet-4-5", "system": "You are a helpful assistant.",
-                "messages": [{"role": "user", "content": "hi"}]}
+        body = {
+            "model": "claude-sonnet-4-5",
+            "system": "You are a helpful assistant.",
+            "messages": [{"role": "user", "content": "hi"}],
+        }
         result = inject_anthropic_cache_control(body, ANTHROPIC)
 
         assert result is not None
-        assert result["system"] == [{
-            "type": "text",
-            "text": "You are a helpful assistant.",
-            "cache_control": {"type": "ephemeral"},
-        }]
+        assert result["system"] == [
+            {
+                "type": "text",
+                "text": "You are a helpful assistant.",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
         # other fields untouched
         assert result["model"] == "claude-sonnet-4-5"
         assert result["messages"] == [{"role": "user", "content": "hi"}]

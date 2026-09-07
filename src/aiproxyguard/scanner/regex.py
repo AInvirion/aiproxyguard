@@ -161,7 +161,9 @@ class HyperscanScanner(BaseRegexScanner):
                 try:
                     compiled = re.compile(pattern, re.IGNORECASE | re.UNICODE)
                     self._unicode_fallback.append((compiled, pattern, sig))
-                    logger.debug(f"Pattern {pattern!r} routed to Unicode fallback (Hyperscan unsafe)")
+                    logger.debug(
+                        f"Pattern {pattern!r} routed to Unicode fallback (Hyperscan unsafe)"
+                    )
                 except re.error as e:
                     logger.warning(f"Failed to compile fallback pattern {pattern!r}: {e}")
                 continue
@@ -253,7 +255,9 @@ class HyperscanScanner(BaseRegexScanner):
                         pattern, signature = pattern_map[pattern_id]
                         # Estimate start since SOM_LEFTMOST is disabled
                         estimated_start = max(0, end - 100)
-                        matched_text = text_bytes[estimated_start:end].decode("utf-8", errors="replace")
+                        matched_text = text_bytes[estimated_start:end].decode(
+                            "utf-8", errors="replace"
+                        )
                         context.append(
                             ScanMatch(
                                 signature=signature,

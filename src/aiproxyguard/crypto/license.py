@@ -144,7 +144,15 @@ def parse_license(license_data: dict[str, Any]) -> License:
         resource_version = license_data.get("model_version", "")
 
     # Required fields
-    required_base = ["license_id", "account_id", "tier", "dek", "issued_at", "expires_at", "signature"]
+    required_base = [
+        "license_id",
+        "account_id",
+        "tier",
+        "dek",
+        "issued_at",
+        "expires_at",
+        "signature",
+    ]
     for field in required_base:
         if field not in license_data:
             raise ValueError(f"Missing required field: {field}")
@@ -271,9 +279,7 @@ def parse_encrypted_header(data: bytes) -> tuple[EncryptedContentHeader, bytes]:
 
     # Validate header length against actual file size
     if header_len > len(data) - 4:
-        raise ValueError(
-            f"Invalid header length {header_len} for content of size {len(data)}"
-        )
+        raise ValueError(f"Invalid header length {header_len} for content of size {len(data)}")
     if header_len > 1024 * 1024:  # 1MB max header
         raise ValueError(f"Header length {header_len} exceeds maximum (1MB)")
 

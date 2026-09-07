@@ -186,10 +186,12 @@ class CertificateAuthority:
         serial_data = f"{hostname}:{now.isoformat()}".encode()
         serial_number = int(hashlib.sha256(serial_data).hexdigest()[:16], 16)
 
-        subject = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, hostname),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "AIProxyGuard"),
-        ])
+        subject = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "AIProxyGuard"),
+            ]
+        )
 
         builder = (
             x509.CertificateBuilder()
@@ -202,9 +204,11 @@ class CertificateAuthority:
         )
 
         # Add Subject Alternative Name extension
-        san = x509.SubjectAlternativeName([
-            x509.DNSName(hostname),
-        ])
+        san = x509.SubjectAlternativeName(
+            [
+                x509.DNSName(hostname),
+            ]
+        )
         builder = builder.add_extension(san, critical=False)
 
         # Add Basic Constraints (not a CA)
@@ -231,9 +235,11 @@ class CertificateAuthority:
 
         # Add Extended Key Usage (server auth)
         builder = builder.add_extension(
-            x509.ExtendedKeyUsage([
-                x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
-            ]),
+            x509.ExtendedKeyUsage(
+                [
+                    x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
+                ]
+            ),
             critical=False,
         )
 
@@ -370,10 +376,12 @@ def generate_ca(
     )
 
     # Create subject/issuer (same for self-signed CA)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, common_name),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization),
+        ]
+    )
 
     # Set validity period
     now = datetime.now(UTC)

@@ -27,7 +27,9 @@ class TestRouter:
     def upstreams(self) -> dict[str, UpstreamConfig]:
         """Test upstreams."""
         return {
-            "openai": UpstreamConfig(url="https://api.openai.com", auth_header="Authorization", timeout=30),
+            "openai": UpstreamConfig(
+                url="https://api.openai.com", auth_header="Authorization", timeout=30
+            ),
             "anthropic": UpstreamConfig(url="https://api.anthropic.com", auth_header="x-api-key"),
             "ollama": UpstreamConfig(url="http://localhost:11434", auth_header=None),
         }

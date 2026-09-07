@@ -65,15 +65,24 @@ logger = get_logger("pipeline")
 # Standard and vendor-specific headers forwarded to upstream LLM providers
 FORWARDED_HEADERS = (
     # Standard headers
-    "content-type", "accept", "accept-encoding", "accept-language",
+    "content-type",
+    "accept",
+    "accept-encoding",
+    "accept-language",
     # OpenAI headers
-    "openai-organization", "openai-project", "openai-beta",
+    "openai-organization",
+    "openai-project",
+    "openai-beta",
     # Anthropic headers
-    "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
+    "anthropic-version",
+    "anthropic-beta",
+    "anthropic-dangerous-direct-browser-access",
     # OpenRouter headers
-    "x-title", "http-referer",
+    "x-title",
+    "http-referer",
     # Common request IDs
-    "x-request-id", "x-correlation-id",
+    "x-request-id",
+    "x-correlation-id",
 )
 
 # Auth headers checked in order when the upstream config does not name one
@@ -245,29 +254,33 @@ class RequestPipeline:
                 "Unknown router task; rejecting",
                 extra={"task": task_name, "client_id": request.client_id},
             )
-            return _json_result(400, {
-                "error": {
-                    "type": "unknown_router_task",
-                    "message": f"Unknown router task: {task_name}",
-                }
-            })
+            return _json_result(
+                400,
+                {
+                    "error": {
+                        "type": "unknown_router_task",
+                        "message": f"Unknown router task: {task_name}",
+                    }
+                },
+            )
 
         decision = select_route(task_cfg, capability_ok(body_json))
         if decision is None:
             self._metrics.record_routing("alias", "no_route")
-            return _json_result(400, {
-                "error": {
-                    "type": "no_route",
-                    "message": f"No model configured for router task: {task_name}",
-                }
-            })
+            return _json_result(
+                400,
+                {
+                    "error": {
+                        "type": "no_route",
+                        "message": f"No model configured for router task: {task_name}",
+                    }
+                },
+            )
 
         body_json["model"] = decision.chosen
         request.body = json.dumps(body_json).encode()
         request.routing_retry = decision.retry_plan
-        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(
-            decision.chosen
-        )
+        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(decision.chosen)
         # Provenance for usage telemetry. The requested side is the alias token
         # (not a real model name), so the control plane won't price it -- alias
         # routes show up in the requested->routed breakdown without fabricated $.
@@ -345,8 +358,11 @@ class RequestPipeline:
             logger.info(
                 "Downgrade candidate (dry-run; not applied)",
                 extra={
-                    "from": model, "to": target, "tier": score.tier,
-                    "score": score.score, "client_id": request.client_id,
+                    "from": model,
+                    "to": target,
+                    "tier": score.tier,
+                    "score": score.score,
+                    "client_id": request.client_id,
                 },
             )
             return
@@ -359,7 +375,9 @@ class RequestPipeline:
         logger.info(
             "Downgraded request to cheaper model",
             extra={
-                "from": model, "to": target, "tier": score.tier,
+                "from": model,
+                "to": target,
+                "tier": score.tier,
                 "client_id": request.client_id,
             },
         )
@@ -457,14 +475,17 @@ class RequestPipeline:
                     input_tokens=input_tokens,
                 )
                 # Return generic message - never expose signature patterns
-                return _json_result(400, {
-                    "error": {
-                        "type": "content_blocked",
-                        "code": f"{scan_result.category}_detected",
-                        "message": "Request blocked: policy violation detected",
-                        "category": scan_result.category,
-                    }
-                })
+                return _json_result(
+                    400,
+                    {
+                        "error": {
+                            "type": "content_blocked",
+                            "code": f"{scan_result.category}_detected",
+                            "message": "Request blocked: policy violation detected",
+                            "category": scan_result.category,
+                        }
+                    },
+                )
 
             if final_action in ("warn", "log"):
                 self._metrics.record_detection(
@@ -498,22 +519,20 @@ class RequestPipeline:
                 extra={"timeout_ms": config.security.scanner_timeout_ms},
             )
             if config.security.failure_mode == "closed":
-                return _json_result(503, {
-                    "error": {"type": "scanner_timeout", "message": "Scanner timed out"}
-                })
+                return _json_result(
+                    503, {"error": {"type": "scanner_timeout", "message": "Scanner timed out"}}
+                )
         except Exception as e:
             # Scanner error - use failure mode
             if config.security.failure_mode == "closed":
-                return _json_result(503, {
-                    "error": {"type": "scanner_error", "message": "Scanner unavailable"}
-                })
+                return _json_result(
+                    503, {"error": {"type": "scanner_error", "message": "Scanner unavailable"}}
+                )
             logger.error(f"Scanner error: {e}")
 
         return None
 
-    async def _forward(
-        self, request: PipelineRequest, outbound: bytes
-    ) -> PipelineResult:
+    async def _forward(self, request: PipelineRequest, outbound: bytes) -> PipelineResult:
         """Forward the outbound bytes upstream and scan the response.
 
         When routing populated ``request.routing_retry``, an upstream 5xx (or a
@@ -579,7 +598,10 @@ class RequestPipeline:
                 ) as resp:
                     # Check response size limit before reading
                     upstream_content_length = resp.content_length
-                    if upstream_content_length is not None and upstream_content_length > config.security.max_response_size:
+                    if (
+                        upstream_content_length is not None
+                        and upstream_content_length > config.security.max_response_size
+                    ):
                         logger.warning(
                             "Response too large",
                             extra={
@@ -587,9 +609,15 @@ class RequestPipeline:
                                 "limit": config.security.max_response_size,
                             },
                         )
-                        return _json_result(502, {
-                            "error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}
-                        })
+                        return _json_result(
+                            502,
+                            {
+                                "error": {
+                                    "type": "response_too_large",
+                                    "message": "Upstream response exceeds size limit",
+                                }
+                            },
+                        )
 
                     response_body = await resp.read()
 
@@ -602,17 +630,27 @@ class RequestPipeline:
                                 "limit": config.security.max_response_size,
                             },
                         )
-                        return _json_result(502, {
-                            "error": {"type": "response_too_large", "message": "Upstream response exceeds size limit"}
-                        })
+                        return _json_result(
+                            502,
+                            {
+                                "error": {
+                                    "type": "response_too_large",
+                                    "message": "Upstream response exceeds size limit",
+                                }
+                            },
+                        )
 
                     # Retry on upstream 5xx if the routing plan has another model.
-                    next_body = self._next_routing_attempt(
-                        request, attempt_body, retry_models
-                    ) if 500 <= resp.status < 600 else None
+                    next_body = (
+                        self._next_routing_attempt(request, attempt_body, retry_models)
+                        if 500 <= resp.status < 600
+                        else None
+                    )
                     if next_body is not None:
                         self._metrics.record_request(
-                            target.provider, request.method, resp.status,
+                            target.provider,
+                            request.method,
+                            resp.status,
                             time.monotonic() - attempt_start,
                         )
                         logger.warning(
@@ -628,7 +666,9 @@ class RequestPipeline:
                         continue
 
                     duration = time.monotonic() - attempt_start
-                    self._metrics.record_request(target.provider, request.method, resp.status, duration)
+                    self._metrics.record_request(
+                        target.provider, request.method, resp.status, duration
+                    )
 
                     # Report billed usage before response scanning: the provider
                     # billed for this completion even if we block the response.
@@ -685,9 +725,7 @@ class RequestPipeline:
                 duration = time.monotonic() - attempt_start
                 self._metrics.record_request(target.provider, request.method, 502, duration)
                 logger.error(f"Upstream error: {e}")
-                return _json_result(502, {
-                    "error": {"type": "upstream_error", "message": str(e)}
-                })
+                return _json_result(502, {"error": {"type": "upstream_error", "message": str(e)}})
 
     def _next_routing_attempt(
         self, request: PipelineRequest, attempt_body: bytes, retry_models: list[str]
@@ -703,9 +741,7 @@ class RequestPipeline:
         rewritten = rewrite_model(attempt_body, next_model)
         if rewritten is None:
             return None
-        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(
-            next_model
-        )
+        request.response_annotations[ROUTED_MODEL_HEADER] = sanitize_header_value(next_model)
         # Keep usage-telemetry provenance in sync with the model actually served:
         # a 5xx fallback changes the routed model, so the prior decision is stale.
         if request.routed_target_model is not None:
@@ -791,14 +827,17 @@ class RequestPipeline:
                         },
                     )
                     # Return generic message - never expose signature patterns
-                    return _json_result(502, {
-                        "error": {
-                            "type": "response_blocked",
-                            "code": f"{scan_result.category}_detected",
-                            "message": "Response blocked: sensitive content detected",
-                            "category": scan_result.category,
-                        }
-                    })
+                    return _json_result(
+                        502,
+                        {
+                            "error": {
+                                "type": "response_blocked",
+                                "code": f"{scan_result.category}_detected",
+                                "message": "Response blocked: sensitive content detected",
+                                "category": scan_result.category,
+                            }
+                        },
+                    )
 
                 # Log non-blocking detections
                 self._metrics.record_detection(

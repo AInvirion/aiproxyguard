@@ -93,20 +93,25 @@ def _extract_bundle_content(data: bytes) -> BundleContent:
                 if f:
                     model_data = f.read()
                     model_format = "sklearn-joblib"
-                    logger.info(f"Extracted sklearn model from bundle: {member.name} ({len(model_data)} bytes)")
+                    logger.info(
+                        f"Extracted sklearn model from bundle: {member.name} ({len(model_data)} bytes)"
+                    )
 
             elif member.name.endswith(".onnx"):
                 f = tar.extractfile(member)
                 if f:
                     model_data = f.read()
                     model_format = "onnx"
-                    logger.info(f"Extracted ONNX model from bundle: {member.name} ({len(model_data)} bytes)")
+                    logger.info(
+                        f"Extracted ONNX model from bundle: {member.name} ({len(model_data)} bytes)"
+                    )
 
             # Extract model config
             elif member.name.endswith("config.json") and "models/" in member.name:
                 f = tar.extractfile(member)
                 if f:
                     import json
+
                     model_config = json.loads(f.read().decode("utf-8"))
 
     return BundleContent(
@@ -192,9 +197,7 @@ TELEMETRY_BUFFER_MAX = 10_000
 # recomputes default_action from detection/categories and never reads a
 # top-level one, so if the cloud ever pushed it we want the unknown-section
 # warning to surface that drift rather than silently suppress it.
-POLICY_CONFIG_SECTIONS = frozenset(
-    {"detection", "categories", "thresholds", "allowlists"}
-)
+POLICY_CONFIG_SECTIONS = frozenset({"detection", "categories", "thresholds", "allowlists"})
 
 # Sections that are boot-time only (upstreams, TLS, etc.). If the control plane
 # pushes one, it cannot be applied at runtime -- it's ignored quietly rather
@@ -276,9 +279,7 @@ class ControlPlaneClient:
         """
         self._policy_update_callback = callback
 
-    def set_signature_update_callback(
-        self, callback: Callable[[SignatureSet], None]
-    ) -> None:
+    def set_signature_update_callback(self, callback: Callable[[SignatureSet], None]) -> None:
         """Set callback for signature updates.
 
         The callback will be invoked with a new SignatureSet whenever
@@ -286,9 +287,7 @@ class ControlPlaneClient:
         """
         self._signature_update_callback = callback
 
-    def set_ml_model_callback(
-        self, callback: Callable[[bytes, dict], None]
-    ) -> None:
+    def set_ml_model_callback(self, callback: Callable[[bytes, dict], None]) -> None:
         """Set callback for ML model updates.
 
         The callback will be invoked with (decrypted_model_bytes, license_data)
@@ -296,9 +295,7 @@ class ControlPlaneClient:
         """
         self._ml_model_callback = callback
 
-    def set_model_sync_begin_callback(
-        self, callback: Callable[[], None]
-    ) -> None:
+    def set_model_sync_begin_callback(self, callback: Callable[[], None]) -> None:
         """Set callback fired once at the start of each full model-sync pass.
 
         A model sync re-fetches the full set of bundles the account is entitled
@@ -309,9 +306,7 @@ class ControlPlaneClient:
         """
         self._model_sync_begin_callback = callback
 
-    def register_section_handler(
-        self, section: str, handler: Callable[[dict], None]
-    ) -> None:
+    def register_section_handler(self, section: str, handler: Callable[[dict], None]) -> None:
         """Register a handler for a runtime config section pushed by the control
         plane.
 
@@ -410,11 +405,15 @@ class ControlPlaneClient:
             if self._auth_permanently_failed:
                 return
             # Exponential backoff: 1s, 2s, 4s
-            delay = base_delay * (2 ** attempt)
-            logger.info(f"Registration failed, retrying in {delay}s (attempt {attempt + 1}/{max_attempts})")
+            delay = base_delay * (2**attempt)
+            logger.info(
+                f"Registration failed, retrying in {delay}s (attempt {attempt + 1}/{max_attempts})"
+            )
             await asyncio.sleep(delay)
         if not self._auth_permanently_failed:
-            logger.warning("Initial registration failed after retries; will retry in heartbeat loop")
+            logger.warning(
+                "Initial registration failed after retries; will retry in heartbeat loop"
+            )
 
     async def stop(self) -> None:
         """Stop the control plane client."""
@@ -538,9 +537,7 @@ class ControlPlaneClient:
             )
             if policy_changed:
                 if server_policy_id != self._last_policy_id:
-                    logger.info(
-                        f"Policy switched: {self._last_policy_id} -> {server_policy_id}"
-                    )
+                    logger.info(f"Policy switched: {self._last_policy_id} -> {server_policy_id}")
                 else:
                     logger.info(
                         f"Config version changed: {self._last_config_version} -> {server_config_version}"
@@ -598,9 +595,7 @@ class ControlPlaneClient:
 
             try:
                 # Parse expiration timestamp
-                expires_at = datetime.fromisoformat(
-                    expires_at_str
-                )
+                expires_at = datetime.fromisoformat(expires_at_str)
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=UTC)
 
@@ -625,6 +620,7 @@ class ControlPlaneClient:
 
                         # Update cache file if caching is enabled
                         from aiproxyguard.signatures.cache import save_bundle_license
+
                         save_bundle_license(bundle_id, new_license)
 
                         new_expires = new_license.get("expires_at", "unknown")
@@ -681,9 +677,7 @@ class ControlPlaneClient:
                         },
                     )
                 except Exception as e:
-                    logger.error(
-                        f"Failed to apply policy/detection config; keeping previous: {e}"
-                    )
+                    logger.error(f"Failed to apply policy/detection config; keeping previous: {e}")
 
             # Dispatch every other config section through the registry. Adding a
             # new section is a register_section_handler() call -- no edit here.
@@ -708,8 +702,7 @@ class ControlPlaneClient:
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to apply '{section}' config section; "
-                        f"keeping previous value: {e}"
+                        f"Failed to apply '{section}' config section; keeping previous value: {e}"
                     )
 
             # Surface sections we received but cannot apply, so cloud/runtime
@@ -846,9 +839,7 @@ class ControlPlaneClient:
             # Verify manifest signature and chain integrity
             verification = self._manifest_verifier.verify_manifest(manifest_data)
             if not verification.valid:
-                logger.error(
-                    f"Manifest verification failed: {verification.error}"
-                )
+                logger.error(f"Manifest verification failed: {verification.error}")
                 return
 
             manifest_version = manifest_data.get("version", "")
@@ -888,7 +879,10 @@ class ControlPlaneClient:
                     # Fetch encrypted bundle with license
                     cache_mode = getattr(self.config, "cache_mode", "full")
                     result = await self._fetch_encrypted_bundle(
-                        bundle_id, bundle_info, load_bundle_cache, save_bundle_cache,
+                        bundle_id,
+                        bundle_info,
+                        load_bundle_cache,
+                        save_bundle_cache,
                         cache_mode=cache_mode,
                     )
                     if result:
@@ -905,13 +899,16 @@ class ControlPlaneClient:
                                 f"Loading ML model from bundle {bundle_id} "
                                 f"(format={model_format}, size={len(model_data)} bytes)"
                             )
-                            self._ml_model_callback(model_data, {
-                                "bundle_id": bundle_id,
-                                "tier": tier,
-                                "format": model_format,
-                                "model_id": model_config.get("model_id"),
-                                "model_version": model_config.get("model_version"),
-                            })
+                            self._ml_model_callback(
+                                model_data,
+                                {
+                                    "bundle_id": bundle_id,
+                                    "tier": tier,
+                                    "format": model_format,
+                                    "model_id": model_config.get("model_id"),
+                                    "model_version": model_config.get("model_version"),
+                                },
+                            )
                 else:
                     # Plain bundle (free tier)
                     try:
@@ -928,7 +925,7 @@ class ControlPlaneClient:
                                 dl_response.raise_for_status()
                                 raw_bytes = dl_response.content
 
-                        if raw_bytes and raw_bytes[:2] == b'\x1f\x8b':
+                        if raw_bytes and raw_bytes[:2] == b"\x1f\x8b":
                             # It's a gzipped tar, extract YAML and model
                             bundle_content = _extract_bundle_content(raw_bytes)
                             content = bundle_content.yaml_content
@@ -949,13 +946,16 @@ class ControlPlaneClient:
                                     f"Loading ML model from bundle {bundle_id} "
                                     f"(format={model_format}, size={len(model_data)} bytes)"
                                 )
-                                self._ml_model_callback(model_data, {
-                                    "bundle_id": bundle_id,
-                                    "tier": tier,
-                                    "format": model_format,
-                                    "model_id": model_config.get("model_id"),
-                                    "model_version": model_config.get("model_version"),
-                                })
+                                self._ml_model_callback(
+                                    model_data,
+                                    {
+                                        "bundle_id": bundle_id,
+                                        "tier": tier,
+                                        "format": model_format,
+                                        "model_id": model_config.get("model_id"),
+                                        "model_version": model_config.get("model_version"),
+                                    },
+                                )
                         else:
                             # Fallback to API endpoint for YAML content only
                             bundle_response = await self.client.get(
@@ -970,13 +970,15 @@ class ControlPlaneClient:
                                 f"content_preview={content[:100]!r}"
                             )
 
-                        bundle_contents.append({
-                            "bundle_id": bundle_id,
-                            "version": bundle_info.get("version", ""),
-                            "tier": tier,
-                            "content": content,
-                            "is_encrypted": False,
-                        })
+                        bundle_contents.append(
+                            {
+                                "bundle_id": bundle_id,
+                                "version": bundle_info.get("version", ""),
+                                "tier": tier,
+                                "content": content,
+                                "is_encrypted": False,
+                            }
+                        )
                     except httpx.HTTPError as e:
                         logger.warning(f"Failed to fetch bundle {bundle_id}: {e}")
 
@@ -1143,8 +1145,7 @@ class ControlPlaneClient:
                 if "dek" not in license_data:
                     # Try to refresh license from server to get fresh DEK
                     logger.info(
-                        f"Cached bundle {bundle_id} has no DEK, "
-                        f"attempting license refresh..."
+                        f"Cached bundle {bundle_id} has no DEK, attempting license refresh..."
                     )
                     try:
                         refresh_response = await self.client.get(
@@ -1165,13 +1166,8 @@ class ControlPlaneClient:
                     license = parse_license(license_data)
 
                     # Validate instance binding for cached license
-                    if (
-                        license.bound_instance_id
-                        and license.bound_instance_id != self.instance_id
-                    ):
-                        logger.error(
-                            f"Cached license for {bundle_id} bound to different instance"
-                        )
+                    if license.bound_instance_id and license.bound_instance_id != self.instance_id:
+                        logger.error(f"Cached license for {bundle_id} bound to different instance")
                         return None
 
                     decrypted = decrypt_content(
@@ -1240,19 +1236,14 @@ class ControlPlaneClient:
 
             # Check if DEK is available (may be missing in encrypted_only mode)
             if "dek" not in license_data:
-                logger.warning(
-                    f"Skipping cached bundle {bundle_id}: no DEK (encrypted_only mode)"
-                )
+                logger.warning(f"Skipping cached bundle {bundle_id}: no DEK (encrypted_only mode)")
                 continue
 
             try:
                 license = parse_license(license_data)
 
                 # Validate instance binding for cached license
-                if (
-                    license.bound_instance_id
-                    and license.bound_instance_id != self.instance_id
-                ):
+                if license.bound_instance_id and license.bound_instance_id != self.instance_id:
                     logger.warning(
                         f"Skipping cached bundle {bundle_id}: bound to different instance"
                     )
@@ -1278,13 +1269,15 @@ class ControlPlaneClient:
                     model_config = {}
 
                 tier = license_data.get("tier", "unknown")
-                bundle_contents.append({
-                    "bundle_id": bundle_id,
-                    "version": license_data.get("bundle_version", ""),
-                    "tier": tier,
-                    "content": yaml_content,
-                    "is_encrypted": True,
-                })
+                bundle_contents.append(
+                    {
+                        "bundle_id": bundle_id,
+                        "version": license_data.get("bundle_version", ""),
+                        "tier": tier,
+                        "content": yaml_content,
+                        "is_encrypted": True,
+                    }
+                )
                 licenses[bundle_id] = license
                 logger.info(f"Loaded cached bundle {bundle_id}")
 
@@ -1294,13 +1287,16 @@ class ControlPlaneClient:
                         f"Loading ML model from cached bundle {bundle_id} "
                         f"(format={model_format}, size={len(model_data)} bytes)"
                     )
-                    self._ml_model_callback(model_data, {
-                        "bundle_id": bundle_id,
-                        "tier": tier,
-                        "format": model_format,
-                        "model_id": model_config.get("model_id"),
-                        "model_version": model_config.get("model_version"),
-                    })
+                    self._ml_model_callback(
+                        model_data,
+                        {
+                            "bundle_id": bundle_id,
+                            "tier": tier,
+                            "format": model_format,
+                            "model_id": model_config.get("model_id"),
+                            "model_version": model_config.get("model_version"),
+                        },
+                    )
             except Exception as e:
                 logger.error(f"Failed to decrypt cached bundle {bundle_id}: {e}")
 
@@ -1472,7 +1468,7 @@ class ControlPlaneClient:
                     # Transient failure: stop here rather than hammering the
                     # endpoint with the next group; requeue the rest.
                     unsent.extend(remainder)
-                    for later_group in groups[i + 1:]:
+                    for later_group in groups[i + 1 :]:
                         unsent.extend(later_group)
                     break
         finally:
@@ -1504,7 +1500,7 @@ class ControlPlaneClient:
         sent = 0
         try:
             while sent < len(events):
-                chunk = events[sent:sent + TELEMETRY_FLUSH_BATCH_SIZE]
+                chunk = events[sent : sent + TELEMETRY_FLUSH_BATCH_SIZE]
                 response = await self.client.post(
                     "/api/v1/telemetry/events",
                     json={
@@ -1572,7 +1568,6 @@ class ControlPlaneClient:
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch signatures: {e}")
             return []
-
 
 
 # Global client instance

@@ -48,9 +48,7 @@ class IdentityResolver:
         """
         VALID_METHODS = {"header", "ip", "token", "mtls"}
         if method not in VALID_METHODS:
-            raise ValueError(
-                f"Invalid method: {method}. Must be one of: {VALID_METHODS}"
-            )
+            raise ValueError(f"Invalid method: {method}. Must be one of: {VALID_METHODS}")
 
         if method == "header":
             logger.warning(

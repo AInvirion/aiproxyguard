@@ -713,9 +713,13 @@ class TestUsageReporting:
         client._registered = True
         client._telemetry_buffer = [
             TelemetryEvent(
-                event_type="usage", category="usage",
-                provider="anthropic", model="claude-sonnet-4-5",
-                input_tokens=7, output_tokens=21, latency_ms=300,
+                event_type="usage",
+                category="usage",
+                provider="anthropic",
+                model="claude-sonnet-4-5",
+                input_tokens=7,
+                output_tokens=21,
+                latency_ms=300,
             ),
         ]
 
@@ -858,8 +862,7 @@ class TestFlushCancellationSafety:
         client = ControlPlaneClient(config)
         client._registered = True
         client._telemetry_buffer = [
-            TelemetryEvent(event_type="block", category="x")
-            for _ in range(TELEMETRY_BUFFER_MAX)
+            TelemetryEvent(event_type="block", category="x") for _ in range(TELEMETRY_BUFFER_MAX)
         ]
 
         mock_response = AsyncMock()
@@ -942,11 +945,14 @@ class TestConfigSectionRegistry:
         for name in ("cache", "budget", "cost_optimization"):
             client.register_section_handler(name, lambda c, n=name: calls.append((n, c)))
 
-        await self._apply(client, {
-            "cache": {"ttl": 60},
-            "budget": {"daily": 1000},
-            "cost_optimization": {"mode": "aggressive"},
-        })
+        await self._apply(
+            client,
+            {
+                "cache": {"ttl": 60},
+                "budget": {"daily": 1000},
+                "cost_optimization": {"mode": "aggressive"},
+            },
+        )
 
         assert sorted(n for n, _ in calls) == ["budget", "cache", "cost_optimization"]
 
@@ -982,7 +988,9 @@ class TestConfigSectionRegistry:
 
         client = self._client_with_policy()
         with caplog.at_level(_logging.WARNING):
-            await self._apply(client, {"upstreams": {"openai": {"url": "x"}}, "tls": {"enabled": True}})
+            await self._apply(
+                client, {"upstreams": {"openai": {"url": "x"}}, "tls": {"enabled": True}}
+            )
 
         assert not any("unrecognized" in r.message.lower() for r in caplog.records)
 
@@ -1011,11 +1019,16 @@ class TestUnconsumedPolicyKeyDrift:
 
         mock_response = AsyncMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json = MagicMock(return_value={
-            "name": "p", "version": 1,
-            "config": {"detection": {"prompt-injection": {"enabled": True, "action": "block"}},
-                       "default_action": "warn"},
-        })
+        mock_response.json = MagicMock(
+            return_value={
+                "name": "p",
+                "version": 1,
+                "config": {
+                    "detection": {"prompt-injection": {"enabled": True, "action": "block"}},
+                    "default_action": "warn",
+                },
+            }
+        )
         client._client = AsyncMock()
         client._client.get = AsyncMock(return_value=mock_response)
 
@@ -1044,13 +1057,15 @@ class TestModelSyncOrdering:
         # Manifest with two encrypted bundles in the prod-observed order.
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
-        resp.json = MagicMock(return_value={
-            "version": "v1",
-            "bundles": [
-                {"id": "b-free", "is_encrypted": True, "tier": "free"},
-                {"id": "b-ent", "is_encrypted": True, "tier": "enterprise"},
-            ],
-        })
+        resp.json = MagicMock(
+            return_value={
+                "version": "v1",
+                "bundles": [
+                    {"id": "b-free", "is_encrypted": True, "tier": "free"},
+                    {"id": "b-ent", "is_encrypted": True, "tier": "enterprise"},
+                ],
+            }
+        )
         client._client = MagicMock()
         client._client.get = AsyncMock(return_value=resp)
         client._manifest_verifier = MagicMock()
@@ -1110,9 +1125,7 @@ class TestModelSyncOrdering:
             bound_instance_id = None
             dek = "k"
 
-        monkeypatch.setattr(
-            "aiproxyguard.crypto.license.parse_license", lambda ld: FakeLicense()
-        )
+        monkeypatch.setattr("aiproxyguard.crypto.license.parse_license", lambda ld: FakeLicense())
         monkeypatch.setattr(
             "aiproxyguard.crypto.license.decrypt_content",
             lambda *a, **k: b"\x1f\x8bmodelblob",
@@ -1202,6 +1215,7 @@ class TestScalarScanToggles:
     @pytest.mark.asyncio
     async def test_version_metadata_does_not_warn(self, caplog):
         import logging as _logging
+
         client = self._client()
         with caplog.at_level(_logging.WARNING):
             await self._apply(client, {"version": 1, "detection": {}})

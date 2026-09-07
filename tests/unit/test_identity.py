@@ -36,9 +36,7 @@ class TestIdentityResolver:
     def test_resolve_from_header_fallback(self) -> None:
         """Fall back to secondary header."""
         resolver = IdentityResolver(
-            method="header",
-            header_name="X-Client-ID",
-            fallback_header="X-Forwarded-For"
+            method="header", header_name="X-Client-ID", fallback_header="X-Forwarded-For"
         )
         headers = {"X-Forwarded-For": "192.168.1.1"}
 

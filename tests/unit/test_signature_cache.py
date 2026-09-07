@@ -84,9 +84,7 @@ class TestSaveBundleCache:
             "expires_at": "2024-04-26T00:00:00Z",
         }
 
-        result = save_bundle_cache(
-            "no-cache-bundle", b"encrypted", license_data, cache_mode="none"
-        )
+        result = save_bundle_cache("no-cache-bundle", b"encrypted", license_data, cache_mode="none")
 
         assert result is False
         bundle_path = temp_cache_dir / "bundles" / "no-cache-bundle"
@@ -126,9 +124,7 @@ class TestSaveBundleCache:
             "expires_at": "2024-04-26T00:00:00Z",
         }
 
-        result = save_bundle_cache(
-            "full-bundle", b"encrypted", license_data, cache_mode="full"
-        )
+        result = save_bundle_cache("full-bundle", b"encrypted", license_data, cache_mode="full")
 
         assert result is True
         bundle_path = temp_cache_dir / "bundles" / "full-bundle"

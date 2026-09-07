@@ -359,7 +359,12 @@ class TLSInterceptProxy:
                         await self._send_json_response(
                             writer,
                             413,
-                            {"error": {"type": "payload_too_large", "message": "Request body exceeds size limit"}},
+                            {
+                                "error": {
+                                    "type": "payload_too_large",
+                                    "message": "Request body exceeds size limit",
+                                }
+                            },
                         )
                         continue
                     body = await reader.readexactly(content_len_int)
@@ -404,14 +409,16 @@ class TLSInterceptProxy:
         headers_dict = {k: v for k, v in raw_headers}
         client_id = self._identity.resolve(headers_dict, client_ip)
 
-        result = await self._pipeline.process(PipelineRequest(
-            method=method,
-            path=path,
-            headers=headers,
-            body=body,
-            client_id=client_id,
-            target=self._resolve_target(upstream_host, upstream_port, path),
-        ))
+        result = await self._pipeline.process(
+            PipelineRequest(
+                method=method,
+                path=path,
+                headers=headers,
+                body=body,
+                client_id=client_id,
+                target=self._resolve_target(upstream_host, upstream_port, path),
+            )
+        )
 
         # Send response back to client
         reason = result.reason or _status_reason(result.status)

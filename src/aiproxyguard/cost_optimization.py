@@ -89,9 +89,7 @@ def inject_anthropic_cache_control(
         # Not a top-level system string: array form (phase 2) or absent.
         return None
 
-    body_json["system"] = [
-        {"type": "text", "text": system, "cache_control": dict(_EPHEMERAL)}
-    ]
+    body_json["system"] = [{"type": "text", "text": system, "cache_control": dict(_EPHEMERAL)}]
     logger.debug(
         "Anthropic prompt cache_control injected into system prompt",
         extra={"provider": target.provider},
@@ -109,9 +107,7 @@ def make_cache_control_mutator(
     the pushed ``cost_optimization`` config section without a restart.
     """
 
-    def mutator(
-        body_json: dict[str, Any], target: UpstreamTarget
-    ) -> dict[str, Any] | None:
+    def mutator(body_json: dict[str, Any], target: UpstreamTarget) -> dict[str, Any] | None:
         if not config.cost_optimization.anthropic_prompt_cache:
             return None
         return inject_anthropic_cache_control(body_json, target)

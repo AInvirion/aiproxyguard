@@ -61,8 +61,7 @@ class SklearnBackend:
             import joblib
         except ImportError as e:
             raise ImportError(
-                "joblib is required for sklearn backend. "
-                "Install with: pip install aiproxyguard[ml]"
+                "joblib is required for sklearn backend. Install with: pip install aiproxyguard[ml]"
             ) from e
 
         data = joblib.load(model_path)

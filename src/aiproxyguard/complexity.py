@@ -40,27 +40,75 @@ TIER_BOUNDARIES = (0.15, 0.35, 0.60)
 DOWNGRADE_TIERS = frozenset({"trivial", "simple"})
 
 _REASONING_MARKERS = (
-    "step by step", "step-by-step", "reason through", "reasoning", "prove",
-    "explain why", "think through", "chain of thought", "derive", "work out",
-    "justify", "walk me through",
+    "step by step",
+    "step-by-step",
+    "reason through",
+    "reasoning",
+    "prove",
+    "explain why",
+    "think through",
+    "chain of thought",
+    "derive",
+    "work out",
+    "justify",
+    "walk me through",
 )
 _TECHNICAL_TERMS = (
-    "algorithm", "complexity", "theorem", "architecture", "concurrency",
-    "optimize", "optimization", "asymptotic", "invariant", "race condition",
-    "throughput", "latency", "distributed", "cryptograph", "compiler",
-    "data structure", "recursion", "big-o", "time complexity",
+    "algorithm",
+    "complexity",
+    "theorem",
+    "architecture",
+    "concurrency",
+    "optimize",
+    "optimization",
+    "asymptotic",
+    "invariant",
+    "race condition",
+    "throughput",
+    "latency",
+    "distributed",
+    "cryptograph",
+    "compiler",
+    "data structure",
+    "recursion",
+    "big-o",
+    "time complexity",
 )
 # High-level analysis/design intent. A short prompt asking to compare, design,
 # evaluate, etc. is genuinely complex even with few tokens -- its presence
 # disqualifies a transparent downgrade (conservative: never downgrade these).
 _ANALYSIS_VERBS = (
-    "compare", "evaluate", "assess", "design", "architect", "propose",
-    "recommend", "trade-off", "tradeoff", "migration", "strategy", "critique",
-    "pros and cons", "analyze", "analyse", "plan for", "weigh",
+    "compare",
+    "evaluate",
+    "assess",
+    "design",
+    "architect",
+    "propose",
+    "recommend",
+    "trade-off",
+    "tradeoff",
+    "migration",
+    "strategy",
+    "critique",
+    "pros and cons",
+    "analyze",
+    "analyse",
+    "plan for",
+    "weigh",
 )
 _SIMPLE_INDICATORS = (
-    "hello", "hi ", "hey", "thanks", "thank you", "translate", "summarize",
-    "tl;dr", "what time", "define ", "what is the capital", "say ",
+    "hello",
+    "hi ",
+    "hey",
+    "thanks",
+    "thank you",
+    "translate",
+    "summarize",
+    "tl;dr",
+    "what time",
+    "define ",
+    "what is the capital",
+    "say ",
 )
 _CODE_FENCE = re.compile(r"```")
 _CODE_HINTS = re.compile(
@@ -206,6 +254,9 @@ def score_text(text: str, model: str | None = None) -> ComplexityScore:
         tier = "strong"
 
     return ComplexityScore(
-        score=round(score, 3), tier=tier, breakdown=breakdown,
-        reasoning_markers=reasoning_n, has_complexity_signal=has_complexity_signal,
+        score=round(score, 3),
+        tier=tier,
+        breakdown=breakdown,
+        reasoning_markers=reasoning_n,
+        has_complexity_signal=has_complexity_signal,
     )

@@ -36,9 +36,7 @@ def _make_signature(sig_id: str, category: str = "test") -> Signature:
 
 def _make_signature_set(count: int) -> SignatureSet:
     """Create a SignatureSet with the given number of signatures."""
-    return SignatureSet(
-        signatures=[_make_signature(f"sig_{i}") for i in range(count)]
-    )
+    return SignatureSet(signatures=[_make_signature(f"sig_{i}") for i in range(count)])
 
 
 class TestSignatureBundle:

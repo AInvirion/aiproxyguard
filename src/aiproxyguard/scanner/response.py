@@ -40,6 +40,7 @@ logger = get_logger("response_scanner")
 
 class ResponseScanMode(str, Enum):
     """Response scanning modes."""
+
     PASSTHROUGH = "passthrough"
     BUFFERED = "buffered"
     FULL = "full"
@@ -139,9 +140,7 @@ class ResponseScanner:
         # Determine the highest-severity match
         action_priority = {"allow": 0, "log": 1, "warn": 2, "block": 3}
         sorted_matches = sorted(
-            matches,
-            key=lambda m: action_priority.get(m.signature.action, 0),
-            reverse=True
+            matches, key=lambda m: action_priority.get(m.signature.action, 0), reverse=True
         )
 
         top_match = sorted_matches[0]
@@ -253,9 +252,7 @@ class SSEResponseHandler:
             await asyncio.to_thread(self._on_detection, result)
 
     async def _process_buffered(
-        self,
-        chunk: bytes,
-        content: str
+        self, chunk: bytes, content: str
     ) -> tuple[bytes | None, ResponseScanResult | None]:
         """Process chunk in buffered mode."""
         if self._initial_scan_done:
@@ -288,9 +285,7 @@ class SSEResponseHandler:
         return None, None
 
     async def _process_full(
-        self,
-        chunk: bytes,
-        content: str
+        self, chunk: bytes, content: str
     ) -> tuple[bytes | None, ResponseScanResult | None]:
         """
         Process chunk in full mode.

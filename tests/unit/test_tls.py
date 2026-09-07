@@ -111,7 +111,10 @@ class TestGenerateCA:
             # Verify certificate
             cert = x509.load_pem_x509_certificate(cert_pem)
             assert cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value == "Test CA"
-            assert cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value == "Test Org"
+            assert (
+                cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value
+                == "Test Org"
+            )
 
             # Verify it's a CA certificate
             basic_constraints = cert.extensions.get_extension_for_class(x509.BasicConstraints)
@@ -254,13 +257,15 @@ class TestTLSConfig:
 
     def test_load_tls_config_custom(self):
         """Test loading TLS config with custom values."""
-        config = load_tls_config({
-            "enabled": True,
-            "ca_cert": "/custom/ca.crt",
-            "ca_key": "/custom/ca.key",
-            "cert_cache_size": 500,
-            "cert_validity_days": 7,
-        })
+        config = load_tls_config(
+            {
+                "enabled": True,
+                "ca_cert": "/custom/ca.crt",
+                "ca_key": "/custom/ca.key",
+                "cert_cache_size": 500,
+                "cert_validity_days": 7,
+            }
+        )
 
         assert config.enabled is True
         assert config.ca_cert == "/custom/ca.crt"

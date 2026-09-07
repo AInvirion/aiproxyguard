@@ -41,7 +41,9 @@ class TestMetricsCollector:
         """Record detection metrics."""
         collector = MetricsCollector()
 
-        collector.record_detection(category="prompt_injection", action="block", signature_id="PI-001")
+        collector.record_detection(
+            category="prompt_injection", action="block", signature_id="PI-001"
+        )
 
         assert collector.get_detection_count("prompt_injection", "block") == 1
 

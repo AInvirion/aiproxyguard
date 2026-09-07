@@ -47,9 +47,7 @@ from aiproxyguard.signatures.models import SignatureSet
 logger = get_logger("server")
 
 
-def register_cost_optimization_mutators(
-    pipeline: RequestPipeline, config: Config
-) -> None:
+def register_cost_optimization_mutators(pipeline: RequestPipeline, config: Config) -> None:
     """Register cost-optimization body mutators on a pipeline.
 
     Shared by both transports so the mutator set stays identical. The mutators
@@ -206,7 +204,14 @@ def register_control_plane_callbacks(
         if isinstance(value, bool):
             return value
         if isinstance(value, str) and value.strip().lower() in (
-            "true", "false", "1", "0", "yes", "no", "on", "off"
+            "true",
+            "false",
+            "1",
+            "0",
+            "yes",
+            "no",
+            "on",
+            "off",
         ):
             return value.strip().lower() in ("true", "1", "yes", "on")
         return None
@@ -290,6 +295,7 @@ async def on_startup(app: web.Application) -> None:
     # Start control plane client
     cp_client = get_client()
     if cp_client:
+
         def cache_signatures(new_signatures: SignatureSet) -> None:
             app["signatures"] = new_signatures
 
@@ -355,10 +361,12 @@ async def metrics_handler(request: web.Request) -> web.Response:
 
 async def root_handler(request: web.Request) -> web.Response:
     """Root endpoint returning service info."""
-    return web.json_response({
-        "service": "AIProxyGuard",
-        "version": __version__,
-    })
+    return web.json_response(
+        {
+            "service": "AIProxyGuard",
+            "version": __version__,
+        }
+    )
 
 
 async def check_handler(request: web.Request) -> web.Response:
@@ -411,12 +419,14 @@ async def check_handler(request: web.Request) -> web.Response:
                 signature_name = sig.name
 
         # Don't expose signature_id or details to prevent reverse engineering
-        return web.json_response({
-            "action": scan_result.action,
-            "category": scan_result.category,
-            "signature_name": signature_name,
-            "confidence": scan_result.confidence,
-        })
+        return web.json_response(
+            {
+                "action": scan_result.action,
+                "category": scan_result.category,
+                "signature_name": signature_name,
+                "confidence": scan_result.confidence,
+            }
+        )
 
     except TimeoutError:
         scan_duration = time.monotonic() - scan_start
@@ -432,12 +442,14 @@ async def check_handler(request: web.Request) -> web.Response:
                 status=503,
             )
         # Fail open - return allow
-        return web.json_response({
-            "action": "allow",
-            "category": None,
-            "signature_name": None,
-            "confidence": 0.0,
-        })
+        return web.json_response(
+            {
+                "action": "allow",
+                "category": None,
+                "signature_name": None,
+                "confidence": 0.0,
+            }
+        )
     except Exception as e:
         logger.error(f"Check endpoint error: {e}")
         # Honor failure_mode: closed = fail safe (503), open = allow
@@ -447,12 +459,14 @@ async def check_handler(request: web.Request) -> web.Response:
                 status=503,
             )
         # Fail open - return allow
-        return web.json_response({
-            "action": "allow",
-            "category": None,
-            "signature_name": None,
-            "confidence": 0.0,
-        })
+        return web.json_response(
+            {
+                "action": "allow",
+                "category": None,
+                "signature_name": None,
+                "confidence": 0.0,
+            }
+        )
 
 
 async def proxy_handler(request: web.Request) -> web.Response:
@@ -492,19 +506,21 @@ async def proxy_handler(request: web.Request) -> web.Response:
             status=413,
         )
 
-    result = await pipeline.process(PipelineRequest(
-        method=request.method,
-        path=path,
-        headers={k.lower(): v for k, v in request.headers.items()},
-        body=body,
-        client_id=client_id,
-        target=UpstreamTarget(
-            provider=route.provider,
-            url=route.upstream_url,
-            auth_header=route.auth_header,
-            timeout=route.timeout,
-        ),
-    ))
+    result = await pipeline.process(
+        PipelineRequest(
+            method=request.method,
+            path=path,
+            headers={k.lower(): v for k, v in request.headers.items()},
+            body=body,
+            client_id=client_id,
+            target=UpstreamTarget(
+                provider=route.provider,
+                url=route.upstream_url,
+                auth_header=route.auth_header,
+                timeout=route.timeout,
+            ),
+        )
+    )
 
     return web.Response(
         status=result.status,
@@ -526,6 +542,7 @@ def create_app(config: Config) -> web.Application:
         signatures = load_signatures(config.signatures.path)
     except FileNotFoundError:
         from aiproxyguard.signatures.models import SignatureSet
+
         signatures = SignatureSet(signatures=[])
 
     app["signatures"] = signatures

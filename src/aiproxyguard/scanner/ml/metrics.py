@@ -37,11 +37,7 @@ def _escape_prometheus_label(value: str) -> str:
     - Double quote -> \"
     - Newline -> \n
     """
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-    )
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 @dataclass
@@ -93,7 +89,7 @@ class MLClassifierMetrics:
         # Record latency
         self.prediction_latencies_ms.append(latency_ms)
         if len(self.prediction_latencies_ms) > self._max_latencies:
-            self.prediction_latencies_ms = self.prediction_latencies_ms[-self._max_latencies:]
+            self.prediction_latencies_ms = self.prediction_latencies_ms[-self._max_latencies :]
 
     def record_error(self) -> None:
         """Record a prediction error."""
@@ -128,7 +124,7 @@ class MLClassifierMetrics:
             latency_ms = (time.perf_counter() - start) * 1000
             self.prediction_latencies_ms.append(latency_ms)
             if len(self.prediction_latencies_ms) > self._max_latencies:
-                self.prediction_latencies_ms = self.prediction_latencies_ms[-self._max_latencies:]
+                self.prediction_latencies_ms = self.prediction_latencies_ms[-self._max_latencies :]
 
     def get_latency_percentiles(self) -> dict[str, float]:
         """Get latency percentiles (p50, p90, p99)."""
@@ -158,7 +154,9 @@ class MLClassifierMetrics:
         lines.append("# TYPE ml_classifier_predictions_by_category counter")
         for category, count in self.predictions_by_category.items():
             escaped_cat = _escape_prometheus_label(category)
-            lines.append(f'ml_classifier_predictions_by_category{{category="{escaped_cat}"}} {count}')
+            lines.append(
+                f'ml_classifier_predictions_by_category{{category="{escaped_cat}"}} {count}'
+            )
 
         lines.append("# HELP ml_classifier_predictions_blocked Predictions resulting in block")
         lines.append("# TYPE ml_classifier_predictions_blocked counter")
@@ -196,17 +194,24 @@ class MLClassifierMetrics:
             lines.append("# HELP ml_classifier_model_info Model information")
             lines.append("# TYPE ml_classifier_model_info gauge")
             lines.append(
-                f'ml_classifier_model_info{{model_id="{escaped_id}",'
-                f'version="{escaped_version}"}} 1'
+                f'ml_classifier_model_info{{model_id="{escaped_id}",version="{escaped_version}"}} 1'
             )
 
         # Histograms (simplified as summary)
         percentiles = self.get_latency_percentiles()
-        lines.append("# HELP ml_classifier_prediction_latency_ms Prediction latency in milliseconds")
+        lines.append(
+            "# HELP ml_classifier_prediction_latency_ms Prediction latency in milliseconds"
+        )
         lines.append("# TYPE ml_classifier_prediction_latency_ms summary")
-        lines.append(f'ml_classifier_prediction_latency_ms{{quantile="0.5"}} {percentiles["p50"]:.2f}')
-        lines.append(f'ml_classifier_prediction_latency_ms{{quantile="0.9"}} {percentiles["p90"]:.2f}')
-        lines.append(f'ml_classifier_prediction_latency_ms{{quantile="0.99"}} {percentiles["p99"]:.2f}')
+        lines.append(
+            f'ml_classifier_prediction_latency_ms{{quantile="0.5"}} {percentiles["p50"]:.2f}'
+        )
+        lines.append(
+            f'ml_classifier_prediction_latency_ms{{quantile="0.9"}} {percentiles["p90"]:.2f}'
+        )
+        lines.append(
+            f'ml_classifier_prediction_latency_ms{{quantile="0.99"}} {percentiles["p99"]:.2f}'
+        )
 
         return "\n".join(lines)
 

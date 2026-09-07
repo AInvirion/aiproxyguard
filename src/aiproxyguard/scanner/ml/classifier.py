@@ -99,6 +99,7 @@ class MLClassifier:
         try:
             if suffix in (".joblib", ".pkl", ".pickle"):
                 from aiproxyguard.scanner.ml.sklearn_backend import SklearnBackend
+
                 self._backend = SklearnBackend()
                 self._backend.load(model_path)
                 self._available = True
@@ -112,6 +113,7 @@ class MLClassifier:
                 )
             elif suffix == ".onnx":
                 from aiproxyguard.scanner.ml.onnx_backend import ONNXBackend
+
                 self._backend = ONNXBackend()
                 self._backend.load(model_path)
                 self._available = True
@@ -301,6 +303,7 @@ class MLClassifier:
             finally:
                 # Clean up temp file
                 import os
+
                 os.unlink(temp_path)
 
         except Exception as e:

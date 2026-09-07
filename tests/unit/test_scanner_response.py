@@ -34,44 +34,46 @@ from aiproxyguard.signatures.models import Signature, SignatureSet
 @pytest.fixture
 def response_signatures() -> SignatureSet:
     """Create test signatures for response scanning."""
-    return SignatureSet(signatures=[
-        Signature(
-            id="PII-001",
-            name="SSN Pattern",
-            category="pii",
-            severity="high",
-            patterns=[r"\d{3}-\d{2}-\d{4}"],
-            action="block",
-            scan_target="response",
-        ),
-        Signature(
-            id="PII-002",
-            name="Credit Card",
-            category="pii",
-            severity="high",
-            patterns=[r"\d{4}-\d{4}-\d{4}-\d{4}"],
-            action="warn",
-            scan_target="both",
-        ),
-        Signature(
-            id="DATA-001",
-            name="API Key Leak",
-            category="data_exfil",
-            severity="critical",
-            patterns=[r"sk-[a-zA-Z0-9]{32,}"],
-            action="block",
-            scan_target="response",
-        ),
-        Signature(
-            id="REQ-001",
-            name="Request Only Pattern",
-            category="prompt_injection",
-            severity="high",
-            patterns=[r"ignore.*instructions"],
-            action="block",
-            scan_target="request",  # Should NOT be used for response scanning
-        ),
-    ])
+    return SignatureSet(
+        signatures=[
+            Signature(
+                id="PII-001",
+                name="SSN Pattern",
+                category="pii",
+                severity="high",
+                patterns=[r"\d{3}-\d{2}-\d{4}"],
+                action="block",
+                scan_target="response",
+            ),
+            Signature(
+                id="PII-002",
+                name="Credit Card",
+                category="pii",
+                severity="high",
+                patterns=[r"\d{4}-\d{4}-\d{4}-\d{4}"],
+                action="warn",
+                scan_target="both",
+            ),
+            Signature(
+                id="DATA-001",
+                name="API Key Leak",
+                category="data_exfil",
+                severity="critical",
+                patterns=[r"sk-[a-zA-Z0-9]{32,}"],
+                action="block",
+                scan_target="response",
+            ),
+            Signature(
+                id="REQ-001",
+                name="Request Only Pattern",
+                category="prompt_injection",
+                severity="high",
+                patterns=[r"ignore.*instructions"],
+                action="block",
+                scan_target="request",  # Should NOT be used for response scanning
+            ),
+        ]
+    )
 
 
 @pytest.fixture
@@ -165,9 +167,7 @@ class TestResponseScanner:
 
         assert not result.has_detections
 
-    def test_disabled_scanner(
-        self, response_signatures: SignatureSet
-    ) -> None:
+    def test_disabled_scanner(self, response_signatures: SignatureSet) -> None:
         """Test that disabled scanner returns empty result."""
         config = ResponseScannerConfig(enabled=False)
         scanner = ResponseScanner(config, response_signatures)
@@ -176,9 +176,7 @@ class TestResponseScanner:
         assert not result.blocked
         assert not result.has_detections
 
-    def test_category_filtering(
-        self, response_signatures: SignatureSet
-    ) -> None:
+    def test_category_filtering(self, response_signatures: SignatureSet) -> None:
         """Test that category filtering works."""
         config = ResponseScannerConfig(
             enabled=True,
@@ -233,7 +231,7 @@ class TestSSEResponseHandler:
         scanner = ResponseScanner(passthrough_config, response_signatures)
         handler = SSEResponseHandler(scanner)
 
-        chunk = b"data: {\"content\": \"Hello\"}\n\n"
+        chunk = b'data: {"content": "Hello"}\n\n'
         result_chunk, scan_result = await handler.process_chunk(chunk)
 
         assert result_chunk == chunk
@@ -340,7 +338,7 @@ class TestSSEResponseHandler:
         handler = SSEResponseHandler(scanner)
 
         # Test normal SSE data
-        chunk = b"data: {\"content\": \"test\"}\n\n"
+        chunk = b'data: {"content": "test"}\n\n'
         data = handler._extract_sse_data(chunk)
         assert '{"content": "test"}' in data
 

@@ -145,9 +145,7 @@ class SignatureBundleSet:
             Earliest expiration datetime, or None if all bundles are free tier
         """
         expirations = [
-            b.expires_at
-            for b in self.bundles
-            if b.expires_at is not None and not b.is_expired
+            b.expires_at for b in self.bundles if b.expires_at is not None and not b.is_expired
         ]
         return min(expirations) if expirations else None
 
@@ -176,11 +174,7 @@ class SignatureBundleSet:
     @property
     def active_signatures_count(self) -> int:
         """Number of active (non-expired) signatures."""
-        return sum(
-            len(b.signatures.signatures)
-            for b in self.bundles
-            if not b.is_expired
-        )
+        return sum(len(b.signatures.signatures) for b in self.bundles if not b.is_expired)
 
     def get_bundle(self, bundle_id: str) -> SignatureBundle | None:
         """Get a specific bundle by ID."""

@@ -26,12 +26,27 @@ from aiproxyguard.signatures.models import Signature, SignatureSet
 
 @pytest.fixture
 def signatures() -> SignatureSet:
-    return SignatureSet(signatures=[
-        Signature(id="PI-001", name="Ignore instructions", category="prompt_injection",
-                 severity="high", patterns=["ignore.*instructions", "disregard.*rules"], action="block"),
-        Signature(id="PI-002", name="New task", category="prompt_injection",
-                 severity="medium", patterns=["new task:"], action="warn"),
-    ])
+    return SignatureSet(
+        signatures=[
+            Signature(
+                id="PI-001",
+                name="Ignore instructions",
+                category="prompt_injection",
+                severity="high",
+                patterns=["ignore.*instructions", "disregard.*rules"],
+                action="block",
+            ),
+            Signature(
+                id="PI-002",
+                name="New task",
+                category="prompt_injection",
+                severity="medium",
+                patterns=["new task:"],
+                action="warn",
+            ),
+        ]
+    )
+
 
 class TestRegexScanner:
     def test_matches_pattern(self, signatures: SignatureSet) -> None:
@@ -61,16 +76,18 @@ class TestRegexScanner:
         assert len(results) == 0
 
         # Reload with new signatures
-        new_signatures = SignatureSet(signatures=[
-            Signature(
-                id="NEW-001",
-                name="Secret",
-                category="data_leak",
-                severity="critical",
-                patterns=["secret pattern"],
-                action="block",
-            ),
-        ])
+        new_signatures = SignatureSet(
+            signatures=[
+                Signature(
+                    id="NEW-001",
+                    name="Secret",
+                    category="data_leak",
+                    severity="critical",
+                    patterns=["secret pattern"],
+                    action="block",
+                ),
+            ]
+        )
         scanner.reload(new_signatures)
         results = scanner.scan("secret pattern")
         assert len(results) == 1
@@ -184,32 +201,34 @@ class TestNeedsUnicodeFallback:
 @pytest.fixture
 def unicode_range_signatures() -> SignatureSet:
     """Synthetic signatures with Unicode character class ranges for testing the fallback mechanism."""
-    return SignatureSet(signatures=[
-        Signature(
-            id="TEST-U001",
-            name="Circled digit range",
-            category="unicode-range",
-            severity="high",
-            patterns=["[①-⑳]+"],
-            action="block",
-        ),
-        Signature(
-            id="TEST-U002",
-            name="Fullwidth uppercase range",
-            category="unicode-range",
-            severity="high",
-            patterns=["[Ａ-Ｚ]{3,}"],
-            action="block",
-        ),
-        Signature(
-            id="TEST-U003",
-            name="Superscript digit range",
-            category="unicode-range",
-            severity="high",
-            patterns=["[⁰-⁹]{3,}"],
-            action="block",
-        ),
-    ])
+    return SignatureSet(
+        signatures=[
+            Signature(
+                id="TEST-U001",
+                name="Circled digit range",
+                category="unicode-range",
+                severity="high",
+                patterns=["[①-⑳]+"],
+                action="block",
+            ),
+            Signature(
+                id="TEST-U002",
+                name="Fullwidth uppercase range",
+                category="unicode-range",
+                severity="high",
+                patterns=["[Ａ-Ｚ]{3,}"],
+                action="block",
+            ),
+            Signature(
+                id="TEST-U003",
+                name="Superscript digit range",
+                category="unicode-range",
+                severity="high",
+                patterns=["[⁰-⁹]{3,}"],
+                action="block",
+            ),
+        ]
+    )
 
 
 # Benign samples by language used to verify no false positives from Unicode
@@ -376,25 +395,19 @@ class TestUnicodeFalsePositives:
 class TestUnicodeRangeDetection:
     """Ensure Unicode characters in test ranges are properly detected"""
 
-    def test_circled_digits_detected(
-        self, unicode_range_signatures: SignatureSet
-    ) -> None:
+    def test_circled_digits_detected(self, unicode_range_signatures: SignatureSet) -> None:
         scanner = RegexScanner(unicode_range_signatures)
         results = scanner.scan("①②③④⑤⑥⑦⑧⑨⑩")
         ids = [r.signature.id for r in results]
         assert "TEST-U001" in ids
 
-    def test_fullwidth_uppercase_detected(
-        self, unicode_range_signatures: SignatureSet
-    ) -> None:
+    def test_fullwidth_uppercase_detected(self, unicode_range_signatures: SignatureSet) -> None:
         scanner = RegexScanner(unicode_range_signatures)
         results = scanner.scan("ＡＢＣＤＥＦＧ")
         ids = [r.signature.id for r in results]
         assert "TEST-U002" in ids
 
-    def test_superscript_detected(
-        self, unicode_range_signatures: SignatureSet
-    ) -> None:
+    def test_superscript_detected(self, unicode_range_signatures: SignatureSet) -> None:
         # ⁰⁴⁵⁶⁷⁸⁹ are U+2070, U+2074-U+2079 — all within [⁰-⁹]
         scanner = RegexScanner(unicode_range_signatures)
         results = scanner.scan("⁰⁴⁵⁶⁷⁸⁹")
@@ -424,24 +437,26 @@ class TestHyperscanUnicodeFallbackRouting:
         except ImportError:
             pytest.skip("Hyperscan not available")
 
-        mixed = SignatureSet(signatures=[
-            Signature(
-                id="PI-001",
-                name="Ignore instructions",
-                category="prompt-injection",
-                severity="high",
-                patterns=["ignore.*instructions"],  # ASCII, safe for Hyperscan
-                action="block",
-            ),
-            Signature(
-                id="TEST-U001",
-                name="Circled digit range",
-                category="unicode-range",
-                severity="high",
-                patterns=["[①-⑳]+"],  # Unicode range, needs fallback
-                action="block",
-            ),
-        ])
+        mixed = SignatureSet(
+            signatures=[
+                Signature(
+                    id="PI-001",
+                    name="Ignore instructions",
+                    category="prompt-injection",
+                    severity="high",
+                    patterns=["ignore.*instructions"],  # ASCII, safe for Hyperscan
+                    action="block",
+                ),
+                Signature(
+                    id="TEST-U001",
+                    name="Circled digit range",
+                    category="unicode-range",
+                    severity="high",
+                    patterns=["[①-⑳]+"],  # Unicode range, needs fallback
+                    action="block",
+                ),
+            ]
+        )
         scanner = HyperscanScanner(mixed)
         assert len(scanner._pattern_map) == 1
         assert scanner._pattern_map[0][0] == "ignore.*instructions"

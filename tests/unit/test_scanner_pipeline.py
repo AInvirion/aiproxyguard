@@ -21,10 +21,19 @@ from aiproxyguard.signatures.models import Signature, SignatureSet
 
 @pytest.fixture
 def signatures() -> SignatureSet:
-    return SignatureSet(signatures=[
-        Signature(id="PI-001", name="Ignore instructions", category="prompt_injection",
-                 severity="high", patterns=["ignore.*instructions"], action="block"),
-    ])
+    return SignatureSet(
+        signatures=[
+            Signature(
+                id="PI-001",
+                name="Ignore instructions",
+                category="prompt_injection",
+                severity="high",
+                patterns=["ignore.*instructions"],
+                action="block",
+            ),
+        ]
+    )
+
 
 class TestScannerPipeline:
     def test_scan_detects_threat(self, signatures: SignatureSet) -> None:
@@ -73,8 +82,14 @@ class TestMLTierSelection:
         from aiproxyguard.config import MLClassifierConfig, ResponseScannerConfig, ScannerConfig
         from aiproxyguard.scanner.pipeline import ScannerPipeline
         from aiproxyguard.signatures.models import SignatureSet
-        cfg = ScannerConfig(enabled=True, regex=False, heuristics=False, ml_classifier=True,
-                            response=ResponseScannerConfig(enabled=False))
+
+        cfg = ScannerConfig(
+            enabled=True,
+            regex=False,
+            heuristics=False,
+            ml_classifier=True,
+            response=ResponseScannerConfig(enabled=False),
+        )
         p = ScannerPipeline(cfg, SignatureSet(signatures=[]), MLClassifierConfig(enabled=True))
         # stub the underlying classifier so load_from_bytes always "succeeds"
         p._ml_classifier = MagicMock()
@@ -115,9 +130,16 @@ class TestMLTierSelection:
         from aiproxyguard.config import ResponseScannerConfig, ScannerConfig
         from aiproxyguard.scanner.pipeline import ScannerPipeline
         from aiproxyguard.signatures.models import SignatureSet
-        p = ScannerPipeline(ScannerConfig(enabled=True, regex=False, heuristics=False,
-                            response=ResponseScannerConfig(enabled=False)),
-                            SignatureSet(signatures=[]))
+
+        p = ScannerPipeline(
+            ScannerConfig(
+                enabled=True,
+                regex=False,
+                heuristics=False,
+                response=ResponseScannerConfig(enabled=False),
+            ),
+            SignatureSet(signatures=[]),
+        )
         assert p.load_ml_from_bytes(b"x", {"tier": "pro"}) is False
 
     def test_downgrade_takes_effect_after_per_pass_reset(self):
@@ -153,8 +175,13 @@ class TestScanToggles:
         from aiproxyguard.config import ResponseScannerConfig, ScannerConfig
         from aiproxyguard.scanner.pipeline import ScannerPipeline
         from aiproxyguard.signatures.models import SignatureSet
-        cfg = ScannerConfig(enabled=True, regex=False, heuristics=False,
-                            response=ResponseScannerConfig(enabled=response_enabled))
+
+        cfg = ScannerConfig(
+            enabled=True,
+            regex=False,
+            heuristics=False,
+            response=ResponseScannerConfig(enabled=response_enabled),
+        )
         return ScannerPipeline(cfg, SignatureSet(signatures=[]))
 
     def test_set_request_scanning_toggles_dedicated_flag(self):
