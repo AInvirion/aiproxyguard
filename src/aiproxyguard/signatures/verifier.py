@@ -22,6 +22,10 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +78,7 @@ class ManifestVerifier:
         """Whether signature verification is enabled."""
         return self._public_key_bytes is not None
 
-    def _get_public_key(self):
+    def _get_public_key(self) -> Ed25519PublicKey | None:
         """Get the Ed25519 public key object."""
         if not self._public_key_bytes:
             return None
@@ -88,7 +92,7 @@ class ManifestVerifier:
             logger.error(f"Failed to load public key: {e}")
             return None
 
-    def verify_manifest(self, manifest_data: dict) -> VerificationResult:
+    def verify_manifest(self, manifest_data: dict[str, Any]) -> VerificationResult:
         """Verify a manifest's signature and chain integrity.
 
         Args:
@@ -168,7 +172,7 @@ class ManifestVerifier:
                 sequence=sequence,
             )
 
-    def _compute_manifest_hash(self, manifest_data: dict) -> str:
+    def _compute_manifest_hash(self, manifest_data: dict[str, Any]) -> str:
         """Compute SHA-256 hash of manifest data for chain verification."""
         canonical = json.dumps(manifest_data, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from aiproxyguard.config import MLClassifierConfig
@@ -191,7 +191,7 @@ class MLClassifier:
         self,
         model_data: bytes,
         model_format: str | None = None,
-        config: dict | None = None,
+        config: dict[str, Any] | None = None,
     ) -> bool:
         """Load model from bytes (e.g., from control plane sync).
 
@@ -232,7 +232,9 @@ class MLClassifier:
         else:
             return self._load_sklearn_from_bytes(model_data)
 
-    def _load_onnx_from_bytes(self, model_data: bytes, config: dict | None = None) -> bool:
+    def _load_onnx_from_bytes(
+        self, model_data: bytes, config: dict[str, Any] | None = None
+    ) -> bool:
         """Load ONNX model from bytes."""
         try:
             from aiproxyguard.scanner.ml.onnx_backend import ONNXBackend
@@ -313,7 +315,7 @@ class MLClassifier:
             return False
 
     @property
-    def model_info(self) -> dict | None:
+    def model_info(self) -> dict[str, Any] | None:
         """Get information about the loaded model."""
         if not self.is_available() or self._backend is None:
             return None
@@ -325,13 +327,13 @@ class MLClassifier:
             "action": self._config.action,
         }
 
-    def health_check(self) -> dict:
+    def health_check(self) -> dict[str, Any]:
         """Perform health check on the ML classifier.
 
         Returns:
             Dict with health status and details.
         """
-        status = {
+        status: dict[str, Any] = {
             "healthy": False,
             "enabled": self._config.enabled,
             "available": self._available,

@@ -124,7 +124,7 @@ class HyperscanScanner(BaseRegexScanner):
 
     def __init__(self, signatures: SignatureSet) -> None:
         super().__init__(signatures)
-        self._db: hyperscan.Database | None = None  # type: ignore[name-defined]
+        self._db: hyperscan.Database | None = None
         self._pattern_map: list[tuple[str, Signature]] = []
         # Thread-local storage for scratch spaces to avoid HS_SCRATCH_IN_USE (-10) errors
         self._scratch_local = threading.local()
@@ -197,7 +197,7 @@ class HyperscanScanner(BaseRegexScanner):
                 logger.error(f"Failed to compile Hyperscan database: {e}")
                 self._db = None
 
-    def _get_scratch(self) -> hyperscan.Scratch | None:  # type: ignore[name-defined]
+    def _get_scratch(self) -> hyperscan.Scratch | None:
         """Get or create a thread-local scratch space for the current database."""
         import hyperscan
 
@@ -244,8 +244,8 @@ class HyperscanScanner(BaseRegexScanner):
                     start: int,
                     end: int,
                     flags: int,
-                    context: list[ScanMatch],
-                ) -> None:
+                    context: object,
+                ) -> bool | None:
                     """Callback for each Hyperscan match.
 
                     Note: Without SOM_LEFTMOST, start is always 0 (scan offset).
@@ -258,7 +258,7 @@ class HyperscanScanner(BaseRegexScanner):
                         matched_text = text_bytes[estimated_start:end].decode(
                             "utf-8", errors="replace"
                         )
-                        context.append(
+                        matches.append(
                             ScanMatch(
                                 signature=signature,
                                 matched_pattern=pattern,
@@ -267,6 +267,8 @@ class HyperscanScanner(BaseRegexScanner):
                                 end=end,
                             )
                         )
+                    # Falsy return keeps Hyperscan scanning; truthy would halt it.
+                    return None
 
                 try:
                     # Use thread-local scratch to avoid HS_SCRATCH_IN_USE errors
@@ -301,7 +303,7 @@ class Re2Scanner(BaseRegexScanner):
 
     def __init__(self, signatures: SignatureSet) -> None:
         super().__init__(signatures)
-        self._compiled: list[tuple[re2._Regexp, str, Signature]] = []  # type: ignore[name-defined]
+        self._compiled: list[tuple[re2._Regexp, str, Signature]] = []
         self._compile_patterns()
 
     def _compile_patterns(self) -> None:

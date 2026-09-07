@@ -242,7 +242,7 @@ def register_control_plane_callbacks(
         cp_client.set_initial_signature_version(initial_sig_version)
 
 
-def _build_response_cache(config) -> ResponseCache:
+def _build_response_cache(config: Config) -> ResponseCache:
     """Construct the exact-match response cache (#307) from config.
 
     Namespace = explicit ``cache.namespace`` if set, else a hash of the

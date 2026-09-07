@@ -57,7 +57,7 @@ class BundleContent:
 
     yaml_content: str
     model_data: bytes | None = None
-    model_config: dict | None = None
+    model_config: dict[str, Any] | None = None
     model_format: str | None = None  # "sklearn-joblib", "onnx", etc.
 
 
@@ -227,7 +227,7 @@ class ControlPlaneClient:
         self.instance_id = _get_instance_id()
         self.fingerprint = _get_fingerprint()
         self._client: httpx.AsyncClient | None = None
-        self._heartbeat_task: asyncio.Task | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
         self._telemetry_buffer: list[TelemetryEvent] = []
         self._telemetry_lock = asyncio.Lock()
         self._flushing: bool = False  # Single-flight guard for telemetry flush
@@ -240,9 +240,9 @@ class ControlPlaneClient:
         # Policy/detection and signatures/ML-model are special: the first runs a
         # whole-config translation, the latter two are driven by separate flows
         # (not the runtime config section dispatch).
-        self._policy_update_callback: Callable[[dict], None] | None = None
+        self._policy_update_callback: Callable[[dict[str, Any]], None] | None = None
         self._signature_update_callback: Callable[[SignatureSet], None] | None = None
-        self._ml_model_callback: Callable[[bytes, dict], None] | None = None
+        self._ml_model_callback: Callable[[bytes, dict[str, Any]], None] | None = None
         # Invoked once at the start of each full model-sync pass, before any
         # ml_model_callback fires. Lets the scanner reset its highest-tier-wins
         # tracking so the correct tier wins fresh each pass (and a downgrade
@@ -255,7 +255,7 @@ class ControlPlaneClient:
         self._section_handlers: dict[str, Callable[[Any], None]] = {}
         self._manifest_verifier = manifest_verifier or get_verifier()
         # Signature bundle tracking
-        self._bundle_licenses: dict[str, dict] = {}  # bundle_id -> license_data
+        self._bundle_licenses: dict[str, dict[str, Any]] = {}  # bundle_id -> license_data
         self._bundle_set: SignatureBundleSet | None = None
 
     @property
@@ -271,7 +271,7 @@ class ControlPlaneClient:
             )
         return self._client
 
-    def set_policy_update_callback(self, callback: Callable[[dict], None]) -> None:
+    def set_policy_update_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Set callback for policy updates.
 
         The callback will be invoked with the new policy config dict
@@ -287,7 +287,7 @@ class ControlPlaneClient:
         """
         self._signature_update_callback = callback
 
-    def set_ml_model_callback(self, callback: Callable[[bytes, dict], None]) -> None:
+    def set_ml_model_callback(self, callback: Callable[[bytes, dict[str, Any]], None]) -> None:
         """Set callback for ML model updates.
 
         The callback will be invoked with (decrypted_model_bytes, license_data)
@@ -306,7 +306,9 @@ class ControlPlaneClient:
         """
         self._model_sync_begin_callback = callback
 
-    def register_section_handler(self, section: str, handler: Callable[[dict], None]) -> None:
+    def register_section_handler(
+        self, section: str, handler: Callable[[dict[str, Any]], None]
+    ) -> None:
         """Register a handler for a runtime config section pushed by the control
         plane.
 
@@ -324,7 +326,7 @@ class ControlPlaneClient:
         """
         self._section_handlers[section] = handler
 
-    def set_logging_update_callback(self, callback: Callable[[dict], None]) -> None:
+    def set_logging_update_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Set callback for logging config updates (``logging`` section).
 
         The callback will be invoked with logging config dict containing:
@@ -334,7 +336,7 @@ class ControlPlaneClient:
         """
         self.register_section_handler("logging", callback)
 
-    def set_scanner_update_callback(self, callback: Callable[[dict], None]) -> None:
+    def set_scanner_update_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Set callback for scanner config updates (``scanner`` section).
 
         The callback will be invoked with scanner config dict containing:
@@ -345,7 +347,7 @@ class ControlPlaneClient:
         """
         self.register_section_handler("scanner", callback)
 
-    def set_ml_config_update_callback(self, callback: Callable[[dict], None]) -> None:
+    def set_ml_config_update_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Set callback for ML classifier config updates (``ml_classifier`` section).
 
         The callback will be invoked with ML config dict containing:
@@ -354,7 +356,7 @@ class ControlPlaneClient:
         """
         self.register_section_handler("ml_classifier", callback)
 
-    def set_security_update_callback(self, callback: Callable[[dict], None]) -> None:
+    def set_security_update_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
         """Set callback for security config updates (``security`` section).
 
         The callback will be invoked with security config dict containing:
@@ -724,7 +726,7 @@ class ControlPlaneClient:
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch active policy: {e}")
 
-    def _translate_policy_config(self, cloud_config: dict) -> dict:
+    def _translate_policy_config(self, cloud_config: dict[str, Any]) -> dict[str, Any]:
         """Translate cloud policy config to PolicyEngine format.
 
         Supports two cloud formats:
@@ -1002,10 +1004,10 @@ class ControlPlaneClient:
             # Warn about expiring bundles
             expiring_soon = self._bundle_set.get_expiring_soon(within_hours=24)
             for bundle in expiring_soon:
-                logger.warning(
-                    f"Bundle {bundle.bundle_id} expires in "
-                    f"{bundle.time_until_expiry / 3600:.1f} hours"
-                )
+                time_left = bundle.time_until_expiry
+                if time_left is None:  # pragma: no cover - filtered by get_expiring_soon
+                    continue
+                logger.warning(f"Bundle {bundle.bundle_id} expires in {time_left / 3600:.1f} hours")
 
             # Apply via callback
             if self._signature_update_callback:
@@ -1031,11 +1033,11 @@ class ControlPlaneClient:
     async def _fetch_encrypted_bundle(
         self,
         bundle_id: str,
-        bundle_info: dict,
-        load_cache_fn,
-        save_cache_fn,
+        bundle_info: dict[str, Any],
+        load_cache_fn: Callable[..., Any],
+        save_cache_fn: Callable[..., Any],
         cache_mode: str = "full",
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """Fetch an encrypted bundle with license, with cache fallback.
 
         Args:
@@ -1552,7 +1554,7 @@ class ControlPlaneClient:
             return events[sent:]
         return []
 
-    async def fetch_signatures(self, tier: str = "free") -> list[dict]:
+    async def fetch_signatures(self, tier: str = "free") -> list[dict[str, Any]]:
         """Fetch signature manifest from control plane."""
         if not self.config.enabled or not self.config.sync_signatures:
             return []
@@ -1564,7 +1566,8 @@ class ControlPlaneClient:
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("bundles", [])
+            bundles = data.get("bundles", [])
+            return list(bundles) if isinstance(bundles, list) else []
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch signatures: {e}")
             return []

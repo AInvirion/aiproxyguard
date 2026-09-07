@@ -23,7 +23,7 @@ This module implements Phase 4B response scanning with three modes:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -179,7 +179,7 @@ class SSEResponseHandler:
     def __init__(
         self,
         scanner: ResponseScanner,
-        on_detection: callable | None = None,
+        on_detection: Callable[[ResponseScanResult], None] | None = None,
     ) -> None:
         """
         Initialize SSE handler.
@@ -349,7 +349,7 @@ class SSEResponseHandler:
 async def scan_streaming_response(
     scanner: ResponseScanner,
     chunks: AsyncIterator[bytes],
-    on_detection: callable | None = None,
+    on_detection: Callable[[ResponseScanResult], None] | None = None,
 ) -> AsyncIterator[bytes]:
     """
     Scan a streaming response for sensitive data.

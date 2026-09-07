@@ -30,7 +30,7 @@ Two distinct concerns, never to be conflated:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 import tiktoken
 
@@ -129,7 +129,7 @@ def billed_tokens(response_json: dict[str, Any]) -> BilledTokens | None:
     if not isinstance(usage, dict):
         return None
 
-    def _valid(n: object) -> bool:
+    def _valid(n: object) -> TypeGuard[int]:
         # bool is an int subclass; exclude it. Reject negatives -- a malformed
         # or buggy upstream must not poison accounting with negative counts.
         return isinstance(n, int) and not isinstance(n, bool) and n >= 0

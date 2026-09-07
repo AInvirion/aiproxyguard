@@ -25,6 +25,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def _has_multimodal_parts(items: object) -> bool:
     return False
 
 
-def is_cacheable(body: dict) -> bool:
+def is_cacheable(body: dict[str, Any]) -> bool:
     """True only when the request is safe to cache (deterministic, text-only, no tools)."""
     if body.get("tools") or body.get("functions") or body.get("tool_choice"):
         return False
@@ -90,11 +91,11 @@ class ResponseCache:
         self._redis_url = redis_url
         self.ttl_seconds = max(1, min(int(ttl_seconds), 3600))
         self.namespace = namespace or "default"
-        self._redis = None
+        self._redis: Any = None
         self._broken = False
 
-    async def _client(self):
-        if self._broken or not self.enabled:
+    async def _client(self) -> Any:
+        if self._broken or not self.enabled or self._redis_url is None:
             return None
         if self._redis is None:
             try:
