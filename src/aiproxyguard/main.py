@@ -38,7 +38,8 @@ def parse_args() -> argparse.Namespace:
     # Serve command (default behavior)
     serve_parser = subparsers.add_parser("serve", help="Start the proxy server")
     serve_parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         default="/etc/aiproxyguard/config.yaml",
         help="Path to configuration file",
     )
@@ -49,7 +50,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Generate CA command
-    ca_parser = subparsers.add_parser("generate-ca", help="Generate a CA certificate for TLS interception")
+    ca_parser = subparsers.add_parser(
+        "generate-ca", help="Generate a CA certificate for TLS interception"
+    )
     ca_parser.add_argument(
         "--cert",
         default="/etc/aiproxyguard/ca.crt",
@@ -86,14 +89,16 @@ def parse_args() -> argparse.Namespace:
 
     # Global arguments
     parser.add_argument(
-        "-v", "--version",
+        "-v",
+        "--version",
         action="version",
         version=f"aiproxyguard {__version__}",
     )
 
     # For backwards compatibility, also support the old arguments on the root parser
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         default="/etc/aiproxyguard/config.yaml",
         help="Path to configuration file (for 'serve' command)",
     )
@@ -125,9 +130,16 @@ def cmd_generate_ca(args: argparse.Namespace) -> int:
         print()
         print("To use TLS interception, clients must trust the CA certificate.")
         print("Install instructions:")
-        print("  - macOS: security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain " + args.cert)
-        print("  - Linux: cp " + args.cert + " /usr/local/share/ca-certificates/ && update-ca-certificates")
-        print("  - Windows: certutil -addstore -f \"ROOT\" " + args.cert)
+        print(
+            "  - macOS: security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "
+            + args.cert
+        )
+        print(
+            "  - Linux: cp "
+            + args.cert
+            + " /usr/local/share/ca-certificates/ && update-ca-certificates"
+        )
+        print('  - Windows: certutil -addstore -f "ROOT" ' + args.cert)
         return 0
     except Exception as e:
         print(f"Error generating CA: {e}", file=sys.stderr)

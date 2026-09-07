@@ -68,6 +68,7 @@ def _parse_iso_timestamp(timestamp_str: str) -> datetime:
 @dataclass
 class License:
     """Parsed license data."""
+
     license_id: str
     model_id: str
     model_version: str
@@ -82,6 +83,7 @@ class License:
 @dataclass
 class EncryptedModelHeader:
     """Header from encrypted model file."""
+
     format: str
     model_id: str
     version: str
@@ -103,8 +105,15 @@ def parse_license(license_data: dict[str, Any]) -> License:
         ValueError: If license format is invalid
     """
     required_fields = [
-        "license_id", "model_id", "model_version", "account_id",
-        "tier", "dek", "issued_at", "expires_at", "signature"
+        "license_id",
+        "model_id",
+        "model_version",
+        "account_id",
+        "tier",
+        "dek",
+        "issued_at",
+        "expires_at",
+        "signature",
     ]
     for field in required_fields:
         if field not in license_data:
@@ -164,7 +173,9 @@ def verify_license_signature(license_data: dict[str, Any], public_key_b64: str) 
         return False
 
 
-def is_license_valid(license: License, public_key_b64: str, license_data: dict[str, Any]) -> tuple[bool, str]:
+def is_license_valid(
+    license: License, public_key_b64: str, license_data: dict[str, Any]
+) -> tuple[bool, str]:
     """
     Check if license is valid (signature OK and not expired).
 
@@ -207,14 +218,12 @@ def parse_encrypted_model_header(data: bytes) -> tuple[EncryptedModelHeader, byt
 
     # Validate header length against actual file size
     if header_len > len(data) - 4:
-        raise ValueError(
-            f"Invalid header length {header_len} for file of size {len(data)}"
-        )
+        raise ValueError(f"Invalid header length {header_len} for file of size {len(data)}")
     if header_len > 1024 * 1024:  # 1MB max header
         raise ValueError(f"Header length {header_len} exceeds maximum (1MB)")
 
-    header_json = data[4:4 + header_len]
-    ciphertext = data[4 + header_len:]
+    header_json = data[4 : 4 + header_len]
+    ciphertext = data[4 + header_len :]
 
     try:
         header_dict = json.loads(header_json)
@@ -279,7 +288,7 @@ def decrypt_model(encrypted_data: bytes, dek: bytes) -> bytes:
             "model_id": header.model_id,
             "version": header.version,
             "size": len(plaintext),
-        }
+        },
     )
 
     return plaintext

@@ -79,9 +79,7 @@ class TestMLClassifier:
 
     def test_enabled_but_model_not_found(self) -> None:
         """Test classifier enabled but model file doesn't exist."""
-        config = MLClassifierConfig(
-            enabled=True, model_path="/nonexistent/model.joblib"
-        )
+        config = MLClassifierConfig(enabled=True, model_path="/nonexistent/model.joblib")
         classifier = MLClassifier(config)
         assert not classifier.is_available()
         assert classifier.predict("test input") == []
@@ -118,9 +116,7 @@ class TestMLClassifier:
         finally:
             Path(path).unlink()
 
-    def test_predict_filters_by_threshold(
-        self, mock_sklearn_backend: MagicMock
-    ) -> None:
+    def test_predict_filters_by_threshold(self, mock_sklearn_backend: MagicMock) -> None:
         """Test that predictions below threshold are filtered out."""
         mock_sklearn_backend.predict.return_value = [
             ("prompt_injection", 0.9),
@@ -137,9 +133,7 @@ class TestMLClassifier:
                 "aiproxyguard.scanner.ml.sklearn_backend.SklearnBackend",
                 return_value=mock_sklearn_backend,
             ):
-                config = MLClassifierConfig(
-                    enabled=True, model_path=path, threshold=0.7
-                )
+                config = MLClassifierConfig(enabled=True, model_path=path, threshold=0.7)
                 classifier = MLClassifier(config)
 
                 matches = classifier.predict("test input")
@@ -166,9 +160,7 @@ class TestMLClassifier:
                 "aiproxyguard.scanner.ml.sklearn_backend.SklearnBackend",
                 return_value=mock_sklearn_backend,
             ):
-                config = MLClassifierConfig(
-                    enabled=True, model_path=path, threshold=0.7
-                )
+                config = MLClassifierConfig(enabled=True, model_path=path, threshold=0.7)
                 classifier = MLClassifier(config)
 
                 matches = classifier.predict("test input")
@@ -338,6 +330,7 @@ class TestLoadFromBytes:
 
         # Serialize to bytes
         import io
+
         buffer = io.BytesIO()
         joblib.dump(model_data, buffer)
         model_bytes = buffer.getvalue()

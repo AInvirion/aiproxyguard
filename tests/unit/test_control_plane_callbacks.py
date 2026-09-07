@@ -151,8 +151,11 @@ class TestCostOptimizationHandler:
     def _cost_handler(self, cfg):
         cp_client = MagicMock()
         register_control_plane_callbacks(
-            cp_client, scanner=MagicMock(), policy=MagicMock(),
-            config=cfg, metrics=MagicMock(),
+            cp_client,
+            scanner=MagicMock(),
+            policy=MagicMock(),
+            config=cfg,
+            metrics=MagicMock(),
         )
         # pull the handler registered for the "cost_optimization" section
         for call in cp_client.register_section_handler.call_args_list:
@@ -202,7 +205,10 @@ class TestCostOptimizationHandler:
         cfg = FakeConfig(cost_optimization=FakeCostOpt())
         handler = self._cost_handler(cfg)
         handler({"response_cache_routes": ["/openai/*", "/anthropic/v1/messages"]})
-        assert cfg.cost_optimization.response_cache_routes == ["/openai/*", "/anthropic/v1/messages"]
+        assert cfg.cost_optimization.response_cache_routes == [
+            "/openai/*",
+            "/anthropic/v1/messages",
+        ]
 
     def test_response_cache_routes_non_list_preserves_existing(self):
         # A malformed (non-list) value must NOT widen scope: keep the current

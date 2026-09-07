@@ -62,7 +62,9 @@ class TestCountTokens:
     def test_count_tokens_longer_text_has_more_tokens(self):
         """Test that longer text has more tokens."""
         short = count_tokens("Hi")
-        long = count_tokens("Hello, this is a much longer piece of text that should have more tokens.")
+        long = count_tokens(
+            "Hello, this is a much longer piece of text that should have more tokens."
+        )
         assert short is not None
         assert long is not None
         assert long > short
@@ -74,11 +76,13 @@ class TestBilledTokens:
     def test_openai_shape(self):
         from aiproxyguard.tokens import billed_tokens
 
-        result = billed_tokens({
-            "id": "chatcmpl-1",
-            "model": "gpt-4o-2024-08-06",
-            "usage": {"prompt_tokens": 12, "completion_tokens": 34, "total_tokens": 46},
-        })
+        result = billed_tokens(
+            {
+                "id": "chatcmpl-1",
+                "model": "gpt-4o-2024-08-06",
+                "usage": {"prompt_tokens": 12, "completion_tokens": 34, "total_tokens": 46},
+            }
+        )
         assert result is not None
         assert result.input_tokens == 12
         assert result.output_tokens == 34
@@ -86,11 +90,13 @@ class TestBilledTokens:
     def test_anthropic_shape(self):
         from aiproxyguard.tokens import billed_tokens
 
-        result = billed_tokens({
-            "id": "msg_1",
-            "model": "claude-sonnet-4-5",
-            "usage": {"input_tokens": 7, "output_tokens": 21},
-        })
+        result = billed_tokens(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-5",
+                "usage": {"input_tokens": 7, "output_tokens": 21},
+            }
+        )
         assert result is not None
         assert result.input_tokens == 7
         assert result.output_tokens == 21
@@ -99,16 +105,18 @@ class TestBilledTokens:
     def test_anthropic_cache_read_tokens(self):
         from aiproxyguard.tokens import billed_tokens
 
-        result = billed_tokens({
-            "id": "msg_1",
-            "model": "claude-sonnet-4-5",
-            # input_tokens EXCLUDES cache reads (Anthropic reports them apart).
-            "usage": {
-                "input_tokens": 7,
-                "output_tokens": 21,
-                "cache_read_input_tokens": 500,
-            },
-        })
+        result = billed_tokens(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-5",
+                # input_tokens EXCLUDES cache reads (Anthropic reports them apart).
+                "usage": {
+                    "input_tokens": 7,
+                    "output_tokens": 21,
+                    "cache_read_input_tokens": 500,
+                },
+            }
+        )
         assert result is not None
         assert result.input_tokens == 7
         assert result.cache_read_tokens == 500
@@ -116,9 +124,11 @@ class TestBilledTokens:
     def test_invalid_cache_read_tokens_coerced_to_zero(self):
         from aiproxyguard.tokens import billed_tokens
 
-        result = billed_tokens({
-            "usage": {"input_tokens": 7, "output_tokens": 21, "cache_read_input_tokens": -5},
-        })
+        result = billed_tokens(
+            {
+                "usage": {"input_tokens": 7, "output_tokens": 21, "cache_read_input_tokens": -5},
+            }
+        )
         assert result is not None
         assert result.cache_read_tokens == 0
 
@@ -127,13 +137,15 @@ class TestBilledTokens:
         # discount; we don't surface it (would double-count / misprice).
         from aiproxyguard.tokens import billed_tokens
 
-        result = billed_tokens({
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "prompt_tokens_details": {"cached_tokens": 80},
-            },
-        })
+        result = billed_tokens(
+            {
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "prompt_tokens_details": {"cached_tokens": 80},
+                },
+            }
+        )
         assert result is not None
         assert result.cache_read_tokens == 0
 
@@ -171,5 +183,6 @@ class TestBilledTokens:
 class TestBilledTokensNegative:
     def test_negative_rejected(self):
         from aiproxyguard.tokens import billed_tokens
+
         assert billed_tokens({"usage": {"prompt_tokens": -1, "completion_tokens": 5}}) is None
         assert billed_tokens({"usage": {"input_tokens": 3, "output_tokens": -2}}) is None

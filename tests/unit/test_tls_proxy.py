@@ -188,17 +188,28 @@ class TestTLSProxyVendorHeaders:
         # This tests the expected headers that should be forwarded
         allowed_headers = (
             # Standard headers
-            "content-type", "accept", "accept-encoding", "accept-language",
+            "content-type",
+            "accept",
+            "accept-encoding",
+            "accept-language",
             # Auth headers
-            "authorization", "api-key", "x-api-key",
+            "authorization",
+            "api-key",
+            "x-api-key",
             # OpenAI headers
-            "openai-organization", "openai-project", "openai-beta",
+            "openai-organization",
+            "openai-project",
+            "openai-beta",
             # Anthropic headers
-            "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
+            "anthropic-version",
+            "anthropic-beta",
+            "anthropic-dangerous-direct-browser-access",
             # OpenRouter headers
-            "x-title", "http-referer",
+            "x-title",
+            "http-referer",
             # Common request IDs
-            "x-request-id", "x-correlation-id",
+            "x-request-id",
+            "x-correlation-id",
         )
 
         # Verify critical vendor headers are present

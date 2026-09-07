@@ -258,9 +258,7 @@ class TestDetectionReporting:
         cp_client.report_detection = AsyncMock()
 
         with patch("aiproxyguard.pipeline.get_client", return_value=cp_client):
-            result = await pipeline.process(
-                make_request(b'{"model": "gpt-4", "messages": []}')
-            )
+            result = await pipeline.process(make_request(b'{"model": "gpt-4", "messages": []}'))
             await asyncio.sleep(0)  # let the fire-and-forget task run
 
         assert result.status == 400
@@ -387,9 +385,11 @@ class TestResponseScanTimeout:
             # Longer than scanner_timeout_ms (10ms) so wait_for fires, but short
             # enough that the uncancellable worker thread doesn't hang teardown.
             import time as _t
+
             _t.sleep(0.2)
-            return SimpleNamespace(blocked=False, has_detections=False,
-                                   category=None, signature_id=None, details={})
+            return SimpleNamespace(
+                blocked=False, has_detections=False, category=None, signature_id=None, details={}
+            )
 
         rscanner.scan = slow
         pipeline._scanner.response_scanner = rscanner
@@ -443,9 +443,7 @@ class TestUsageReporting:
 
     async def test_no_usage_event_on_upstream_error(self) -> None:
         error_body = b'{"error": {"message": "invalid api key"}}'
-        pipeline, _ = make_pipeline(
-            session=FakeSession(FakeResponse(status=401, body=error_body))
-        )
+        pipeline, _ = make_pipeline(session=FakeSession(FakeResponse(status=401, body=error_body)))
         cp = self._cp_client()
 
         with patch("aiproxyguard.pipeline.get_client", return_value=cp):
@@ -538,9 +536,11 @@ class TestUsageReporting:
         cp = self._cp_client()
 
         with patch("aiproxyguard.pipeline.get_client", return_value=cp):
-            await pipeline.process(make_request(
-                b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}'
-            ))
+            await pipeline.process(
+                make_request(
+                    b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}'
+                )
+            )
             await asyncio.sleep(0)
 
         kwargs = cp.report_usage.call_args.kwargs
@@ -556,9 +556,11 @@ class TestUsageReporting:
         cp = self._cp_client()
 
         with patch("aiproxyguard.pipeline.get_client", return_value=cp):
-            await pipeline.process(make_request(
-                b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}'
-            ))
+            await pipeline.process(
+                make_request(
+                    b'{"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}'
+                )
+            )
             await asyncio.sleep(0)
 
         kwargs = cp.report_usage.call_args.kwargs
@@ -591,10 +593,12 @@ class TestUsageReporting:
         # must report the model actually served ("b"), not the stale first choice.
         cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
         ok_body = b'{"model": "b", "usage": {"prompt_tokens": 5, "completion_tokens": 9}}'
-        session = _SequenceSession([
-            FakeResponse(status=503, body=b'{"err": 1}'),
-            FakeResponse(status=200, body=ok_body),
-        ])
+        session = _SequenceSession(
+            [
+                FakeResponse(status=503, body=b'{"err": 1}'),
+                FakeResponse(status=200, body=ok_body),
+            ]
+        )
         pipeline, _ = make_pipeline(config=cfg, session=session)
         cp = self._cp_client()
 
@@ -618,8 +622,11 @@ class TestUsageReporting:
         rscanner = MagicMock()
         rscanner.enabled = True
         rscanner.scan.return_value = SimpleNamespace(
-            blocked=True, has_detections=True,
-            category="data-leak", signature_id="DL-1", details={},
+            blocked=True,
+            has_detections=True,
+            category="data-leak",
+            signature_id="DL-1",
+            details={},
         )
         pipeline._scanner.response_scanner = rscanner
 
@@ -661,9 +668,7 @@ class TestMutatorScannerCoherence:
         pipeline, session = make_pipeline()
         pipeline.add_mutator(inject_anthropic_cache_control)
 
-        request = make_request(
-            b'{"model": "claude-sonnet-4-5", "system": "You are helpful."}'
-        )
+        request = make_request(b'{"model": "claude-sonnet-4-5", "system": "You are helpful."}')
         request.target.provider = "anthropic"
         request.target.url = "https://api.anthropic.com/v1/messages"
 
@@ -740,9 +745,7 @@ class TestRouterAlias:
         cfg = _routing_config({"known": {"ordered_pool": ["m"]}})
         pipeline, session = make_pipeline(config=cfg)
 
-        result = await pipeline.process(
-            make_request(b'{"model": "router:nope", "messages": []}')
-        )
+        result = await pipeline.process(make_request(b'{"model": "router:nope", "messages": []}'))
 
         assert result.status == 400
         assert b"unknown_router_task" in result.body
@@ -758,15 +761,11 @@ class TestRouterAlias:
         assert b"no_route" in result.body
 
     async def test_capability_filter_prefers_fallback(self) -> None:
-        cfg = _routing_config({
-            "t": {"ordered_pool": ["mini"], "fallback": ["strong"]}
-        })
+        cfg = _routing_config({"t": {"ordered_pool": ["mini"], "fallback": ["strong"]}})
         pipeline, session = make_pipeline(config=cfg)
 
         # tools present -> not capable -> fallback model chosen
-        await pipeline.process(
-            make_request(b'{"model": "router:t", "tools": [{"x": 1}]}')
-        )
+        await pipeline.process(make_request(b'{"model": "router:t", "tools": [{"x": 1}]}'))
 
         assert json.loads(session.calls[0]["data"])["model"] == "strong"
 
@@ -786,10 +785,12 @@ class TestRoutingFallbackRetry:
 
     async def test_retries_next_model_on_5xx(self) -> None:
         cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
-        session = _SequenceSession([
-            FakeResponse(status=503, body=b'{"err": 1}'),
-            FakeResponse(status=200, body=b'{"ok": true}'),
-        ])
+        session = _SequenceSession(
+            [
+                FakeResponse(status=503, body=b'{"err": 1}'),
+                FakeResponse(status=200, body=b'{"ok": true}'),
+            ]
+        )
         pipeline, _ = make_pipeline(config=cfg, session=session)
 
         result = await pipeline.process(make_request(b'{"model": "router:t"}'))
@@ -806,10 +807,12 @@ class TestRoutingFallbackRetry:
 
     async def test_4xx_not_retried(self) -> None:
         cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
-        session = _SequenceSession([
-            FakeResponse(status=400, body=b'{"err": 1}'),
-            FakeResponse(status=200, body=b'{"ok": true}'),
-        ])
+        session = _SequenceSession(
+            [
+                FakeResponse(status=400, body=b'{"err": 1}'),
+                FakeResponse(status=200, body=b'{"ok": true}'),
+            ]
+        )
         pipeline, _ = make_pipeline(config=cfg, session=session)
 
         result = await pipeline.process(make_request(b'{"model": "router:t"}'))
@@ -840,9 +843,7 @@ class TestRoutingFallbackRetry:
 
 def _downgrade_config(dry_run: bool = True) -> MockConfig:
     cfg = MockConfig()
-    cfg.routing.downgrades = [
-        {"provider": "openai", "from": "gpt-4o", "to": "gpt-4o-mini"}
-    ]
+    cfg.routing.downgrades = [{"provider": "openai", "from": "gpt-4o", "to": "gpt-4o-mini"}]
     cfg.routing.dry_run = dry_run
     return cfg
 
@@ -878,7 +879,9 @@ class TestTransparentDowngrade:
         pipeline, session = make_pipeline(config=_downgrade_config(dry_run=False))
 
         result = await pipeline.process(
-            make_request(b'{"model": "gpt-4o", "tools": [{"x": 1}], "messages": [{"role": "user", "content": "hi"}]}')
+            make_request(
+                b'{"model": "gpt-4o", "tools": [{"x": 1}], "messages": [{"role": "user", "content": "hi"}]}'
+            )
         )
 
         assert json.loads(session.calls[0]["data"])["model"] == "gpt-4o"  # unchanged
@@ -912,7 +915,9 @@ class TestDowngradeIntegrationEdges:
         cfg.routing.dry_run = True
         pipeline, session = make_pipeline(config=cfg)
 
-        result = await pipeline.process(make_request(b'{"model": "router:t", "messages": [{"role": "user", "content": "hi"}]}'))
+        result = await pipeline.process(
+            make_request(b'{"model": "router:t", "messages": [{"role": "user", "content": "hi"}]}')
+        )
 
         # alias routed to "cheap"; downgrade must NOT also fire
         assert result.headers["x-aiproxyguard-routed-model"] == "cheap"
@@ -967,7 +972,9 @@ class _FakeCache:
 
 
 # A deterministic, cacheable request body (temperature 0, no tools/stream).
-_CACHEABLE = b'{"model": "gpt-4o-mini", "temperature": 0, "messages": [{"role": "user", "content": "hi"}]}'
+_CACHEABLE = (
+    b'{"model": "gpt-4o-mini", "temperature": 0, "messages": [{"role": "user", "content": "hi"}]}'
+)
 
 
 class TestResponseCache:
@@ -986,8 +993,13 @@ class TestResponseCache:
         assert cache.stored[0].input_tokens == 5 and cache.stored[0].output_tokens == 7
 
     async def test_hit_serves_without_upstream(self) -> None:
-        cached = CachedResponse(body=b'{"cached":true}', content_type="application/json",
-                                input_tokens=5, output_tokens=7, model="gpt-4o-mini")
+        cached = CachedResponse(
+            body=b'{"cached":true}',
+            content_type="application/json",
+            input_tokens=5,
+            output_tokens=7,
+            model="gpt-4o-mini",
+        )
         cache = _FakeCache(hit=cached)
         pipeline, session = make_pipeline()
         pipeline._cache = cache
@@ -1004,7 +1016,9 @@ class TestResponseCache:
         cache = _FakeCache(hit=cached)
         pipeline, session = make_pipeline()
         pipeline._cache = cache
-        pipeline._scan_response = AsyncMock(return_value=PipelineResult(status=403, body=b"blocked"))
+        pipeline._scan_response = AsyncMock(
+            return_value=PipelineResult(status=403, body=b"blocked")
+        )
 
         result = await pipeline.process(make_request(_CACHEABLE))
 
@@ -1094,11 +1108,15 @@ class TestResponseCache:
 
         cp = MagicMock()
         register_control_plane_callbacks(
-            cp, scanner=MagicMock(), policy=MagicMock(),
-            config=pipeline._config, metrics=MagicMock(),
+            cp,
+            scanner=MagicMock(),
+            policy=MagicMock(),
+            config=pipeline._config,
+            metrics=MagicMock(),
         )
         handler = next(
-            c.args[1] for c in cp.register_section_handler.call_args_list
+            c.args[1]
+            for c in cp.register_section_handler.call_args_list
             if c.args and c.args[0] == "cost_optimization"
         )
 
@@ -1154,15 +1172,21 @@ class TestResponseCache:
         # stored under b's key (the model that produced it), never a's.
         cfg = _routing_config({"t": {"ordered_pool": ["a", "b"]}})
         ok_body = b'{"model":"b","usage":{"prompt_tokens":5,"completion_tokens":9}}'
-        session = _SequenceSession([
-            FakeResponse(status=503, body=b'{"err":1}'),
-            FakeResponse(status=200, body=ok_body),
-        ])
+        session = _SequenceSession(
+            [
+                FakeResponse(status=503, body=b'{"err":1}'),
+                FakeResponse(status=200, body=ok_body),
+            ]
+        )
         pipeline, _ = make_pipeline(config=cfg, session=session)
         cache = _FakeCache(hit=None)
         pipeline._cache = cache
 
-        await pipeline.process(make_request(b'{"model":"router:t","temperature":0,"messages":[{"role":"user","content":"hi"}]}'))
+        await pipeline.process(
+            make_request(
+                b'{"model":"router:t","temperature":0,"messages":[{"role":"user","content":"hi"}]}'
+            )
+        )
         await asyncio.sleep(0)
 
         assert cache.stored_keys == ["ck:b"]  # served model, not "ck:a"

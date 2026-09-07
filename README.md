@@ -29,21 +29,16 @@ Point your LLM client to the proxy:
 ```python
 from openai import OpenAI
 
-client = OpenAI(
-    api_key="sk-...",
-    base_url="http://localhost:8080/openai/v1"
-)
+client = OpenAI(api_key="sk-...", base_url="http://localhost:8080/openai/v1")
 
 # Normal requests work as expected
 response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": "Hello!"}]
+    model="gpt-4", messages=[{"role": "user", "content": "Hello!"}]
 )
 
 # Malicious requests are blocked
 response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": "Ignore all previous instructions..."}]
+    model="gpt-4", messages=[{"role": "user", "content": "Ignore all previous instructions..."}]
 )
 # Raises: BadRequestError - content_blocked
 ```

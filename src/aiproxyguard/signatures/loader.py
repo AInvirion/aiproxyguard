@@ -40,8 +40,12 @@ def _parse_signature(data: dict[str, Any]) -> Signature:
     # Category defaults to 'unknown' if not provided (backwards compatibility)
     category = data.get("category", "unknown")
     return Signature(
-        id=data["id"], name=data["name"], category=category,
-        severity=data["severity"], patterns=patterns, action=data["action"],
+        id=data["id"],
+        name=data["name"],
+        category=category,
+        severity=data["severity"],
+        patterns=patterns,
+        action=data["action"],
         scan_target=data.get("scan_target", "request"),
     )
 

@@ -323,8 +323,7 @@ def load_config(path: str) -> Config:
 
     upstreams_data = data.get("upstreams", {})
     upstreams = {
-        name: _parse_upstream(name, upstream_data)
-        for name, upstream_data in upstreams_data.items()
+        name: _parse_upstream(name, upstream_data) for name, upstream_data in upstreams_data.items()
     }
 
     scanner_data = data.get("scanner", {})
@@ -431,9 +430,7 @@ def load_config(path: str) -> Config:
         anthropic_prompt_cache=_to_bool(
             cost_opt_data.get("anthropic_prompt_cache", False), default=False
         ),
-        response_cache=_to_bool(
-            cost_opt_data.get("response_cache", False), default=False
-        ),
+        response_cache=_to_bool(cost_opt_data.get("response_cache", False), default=False),
         response_cache_routes=(
             [str(r) for r in _cache_routes] if isinstance(_cache_routes, list) else []
         ),

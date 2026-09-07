@@ -89,11 +89,28 @@ class JSONFormatter(logging.Formatter):
 
         for key, value in record.__dict__.items():
             if key not in {
-                "name", "msg", "args", "created", "filename", "funcName",
-                "levelname", "levelno", "lineno", "module", "msecs",
-                "pathname", "process", "processName", "relativeCreated",
-                "stack_info", "exc_info", "exc_text", "thread", "threadName",
-                "message", "asctime",
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "stack_info",
+                "exc_info",
+                "exc_text",
+                "thread",
+                "threadName",
+                "message",
+                "asctime",
             }:
                 data[key] = value
 
@@ -119,9 +136,9 @@ def setup_logging(
     if format == "json":
         handler.setFormatter(JSONFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        ))
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
 
     if redact_keys:
         handler.addFilter(RedactingFilter())
@@ -165,17 +182,14 @@ def update_logging(
                 if format == "json":
                     handler.setFormatter(JSONFormatter())
                 else:
-                    handler.setFormatter(logging.Formatter(
-                        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-                    ))
+                    handler.setFormatter(
+                        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+                    )
 
             # Update redaction filter if specified
             if redact_keys is not None:
                 # Remove existing redaction filters
-                handler.filters = [
-                    f for f in handler.filters
-                    if not isinstance(f, RedactingFilter)
-                ]
+                handler.filters = [f for f in handler.filters if not isinstance(f, RedactingFilter)]
                 # Add new filter if enabled
                 if redact_keys:
                     handler.addFilter(RedactingFilter())

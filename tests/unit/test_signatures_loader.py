@@ -118,7 +118,7 @@ signatures:
     severity: "high"
     patterns: ["test"]
     action: "block"
-"""
+""",
             }
         ]
         sigset = parse_signatures_from_bundles(bundles)
@@ -137,7 +137,7 @@ signatures:
     severity: "high"
     patterns: ["ignore.*instructions"]
     action: "block"
-"""
+""",
             },
             {
                 "id": "bundle-2",
@@ -149,7 +149,7 @@ signatures:
     severity: "high"
     patterns: ["dan.*mode"]
     action: "block"
-"""
+""",
             },
         ]
         sigset = parse_signatures_from_bundles(bundles)

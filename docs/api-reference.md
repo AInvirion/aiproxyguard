@@ -160,14 +160,13 @@ curl -X POST http://localhost:8080/check \
 ```python
 import requests
 
+
 def check_prompt(text: str) -> bool:
     """Check if prompt is safe before sending to LLM."""
-    response = requests.post(
-        "http://localhost:8080/check",
-        json={"text": text}
-    )
+    response = requests.post("http://localhost:8080/check", json={"text": text})
     result = response.json()
     return result["action"] == "allow"
+
 
 # Usage
 user_input = input("Enter your question: ")

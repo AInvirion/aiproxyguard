@@ -22,6 +22,7 @@ Point your LLM client at the proxy:
 
 ```python
 from openai import OpenAI
+
 client = OpenAI(api_key="sk-...", base_url="http://localhost:8080/openai/v1")
 ```
 

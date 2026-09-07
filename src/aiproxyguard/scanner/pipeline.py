@@ -131,7 +131,13 @@ class ScannerPipeline:
                 score = (action_priority.get(ml_action, 0), match.confidence)
                 if score > best_score:
                     best_score = score
-                    best = (ml_action, normalized_category, match.model_id, detail, match.confidence)
+                    best = (
+                        ml_action,
+                        normalized_category,
+                        match.model_id,
+                        detail,
+                        match.confidence,
+                    )
 
         if best is None:
             return ScanResult(action="allow")
@@ -184,6 +190,7 @@ class ScannerPipeline:
         """Reload the ML model, optionally from a new path."""
         if self._ml_classifier:
             from pathlib import Path
+
             path = Path(model_path) if model_path else None
             self._ml_classifier.reload(path)
 

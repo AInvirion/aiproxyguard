@@ -30,6 +30,7 @@ def onnxruntime_available() -> bool:
     """Check if onnxruntime is available."""
     try:
         import onnxruntime  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -129,11 +130,15 @@ class TestONNXBackendWithMock:
 
                 # Create config file
                 config_path = Path(tmpdir) / "config.json"
-                config_path.write_text(json.dumps({
-                    "categories": ["safe", "malicious"],
-                    "model_id": "test-onnx-model",
-                    "model_version": "2.0.0",
-                }))
+                config_path.write_text(
+                    json.dumps(
+                        {
+                            "categories": ["safe", "malicious"],
+                            "model_id": "test-onnx-model",
+                            "model_version": "2.0.0",
+                        }
+                    )
+                )
 
                 backend = ONNXBackend()
                 backend.load(Path(tmpdir))

@@ -202,9 +202,7 @@ def load_bundle_cache(bundle_id: str) -> tuple[bytes, dict[str, Any]] | None:
         # Check if license is expired
         expires_at_str = license_data.get("expires_at")
         if expires_at_str:
-            expires_at = datetime.fromisoformat(
-                expires_at_str
-            )
+            expires_at = datetime.fromisoformat(expires_at_str)
             if datetime.now(UTC) > expires_at:
                 logger.info(f"Cached license for {bundle_id} expired at {expires_at}")
                 return None
@@ -238,11 +236,7 @@ def list_cached_bundles() -> list[str]:
         if not bundles_dir.exists():
             return []
 
-        return [
-            d.name
-            for d in bundles_dir.iterdir()
-            if d.is_dir() and (d / "bundle.enc").exists()
-        ]
+        return [d.name for d in bundles_dir.iterdir() if d.is_dir() and (d / "bundle.enc").exists()]
 
     except Exception as e:
         logger.warning(f"Failed to list cached bundles: {e}")
@@ -264,6 +258,7 @@ def clear_bundle_cache(bundle_id: str) -> bool:
 
         if bundle_path.exists():
             import shutil
+
             shutil.rmtree(bundle_path)
             logger.debug(f"Cleared cache for bundle {bundle_id}")
             return True
@@ -293,9 +288,7 @@ def clear_expired_cache() -> int:
                 expires_at_str = license_data.get("expires_at")
 
                 if expires_at_str:
-                    expires_at = datetime.fromisoformat(
-                        expires_at_str
-                    )
+                    expires_at = datetime.fromisoformat(expires_at_str)
                     if now > expires_at and clear_bundle_cache(bundle_id):
                         removed += 1
                         logger.info(f"Removed expired cache for {bundle_id}")
@@ -347,9 +340,7 @@ def get_cache_stats() -> dict[str, Any]:
                     license_data = json.loads(license_file.read_text())
                     expires_at_str = license_data.get("expires_at")
                     if expires_at_str:
-                        expires_at = datetime.fromisoformat(
-                            expires_at_str
-                        )
+                        expires_at = datetime.fromisoformat(expires_at_str)
                         if now > expires_at:
                             expired_bundles += 1
 

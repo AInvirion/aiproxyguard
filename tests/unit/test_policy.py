@@ -38,7 +38,7 @@ class TestPolicyEngine:
         """Category-specific action overrides default."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "warn", "threshold": 0.5}}
+            categories={"prompt_injection": {"action": "warn", "threshold": 0.5}},
         )
         scan_result = ScanResult(action="block", category="prompt_injection", confidence=0.9)
 
@@ -50,7 +50,7 @@ class TestPolicyEngine:
         """Low confidence below threshold becomes allow."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "threshold": 0.8}}
+            categories={"prompt_injection": {"action": "block", "threshold": 0.8}},
         )
         scan_result = ScanResult(action="block", category="prompt_injection", confidence=0.5)
 
@@ -63,7 +63,7 @@ class TestPolicyEngine:
         engine = PolicyEngine(
             default_action="block",
             categories={},
-            allowlists=[{"client_id": "admin-tool", "categories": ["*"]}]
+            allowlists=[{"client_id": "admin-tool", "categories": ["*"]}],
         )
         scan_result = ScanResult(action="block", category="prompt_injection", confidence=0.9)
 
@@ -76,7 +76,7 @@ class TestPolicyEngine:
         engine = PolicyEngine(
             default_action="block",
             categories={},
-            allowlists=[{"client_id": "test-tool", "categories": ["jailbreak"]}]
+            allowlists=[{"client_id": "test-tool", "categories": ["jailbreak"]}],
         )
 
         # Allowed category
@@ -101,7 +101,7 @@ class TestPolicyEngine:
         engine = PolicyEngine(
             default_action="block",
             categories={},
-            allowlists=[{"client_id": "admin", "categories": ["*"]}]
+            allowlists=[{"client_id": "admin", "categories": ["*"]}],
         )
 
         assert engine.is_allowlisted("admin", "any_category") is True
@@ -112,7 +112,7 @@ class TestPolicyEngine:
         engine = PolicyEngine(
             default_action="block",
             categories={},
-            allowlists=[{"client_id": "test", "categories": ["jailbreak"]}]
+            allowlists=[{"client_id": "test", "categories": ["jailbreak"]}],
         )
 
         assert engine.is_allowlisted("test", "jailbreak") is True
@@ -122,7 +122,7 @@ class TestPolicyEngine:
         """Confidence equal to threshold should NOT allow (threshold is exclusive)."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "threshold": 0.8}}
+            categories={"prompt_injection": {"action": "block", "threshold": 0.8}},
         )
         scan_result = ScanResult(action="block", category="prompt_injection", confidence=0.8)
 
@@ -142,8 +142,8 @@ class TestPolicyEngine:
             categories={},
             allowlists=[
                 {"client_id": "multi", "categories": ["cat1"]},
-                {"client_id": "multi", "categories": ["cat2"]}
-            ]
+                {"client_id": "multi", "categories": ["cat2"]},
+            ],
         )
 
         assert engine.is_allowlisted("multi", "cat1") is True
@@ -153,7 +153,7 @@ class TestPolicyEngine:
         """Sensitivity should convert to threshold (threshold = 1 - sensitivity)."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "sensitivity": 0.3}}
+            categories={"prompt_injection": {"action": "block", "sensitivity": 0.3}},
         )
         # sensitivity=0.3 → threshold=0.7
         # confidence=0.5 < threshold=0.7 → allow
@@ -167,7 +167,7 @@ class TestPolicyEngine:
         """High sensitivity (low threshold) should block more."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "sensitivity": 0.9}}
+            categories={"prompt_injection": {"action": "block", "sensitivity": 0.9}},
         )
         # sensitivity=0.9 → threshold=0.1
         # confidence=0.5 >= threshold=0.1 → block
@@ -181,7 +181,9 @@ class TestPolicyEngine:
         """Sensitivity takes precedence when both are provided."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "threshold": 0.9, "sensitivity": 0.3}}
+            categories={
+                "prompt_injection": {"action": "block", "threshold": 0.9, "sensitivity": 0.3}
+            },
         )
         # sensitivity=0.3 → threshold=0.7 (ignores threshold=0.9)
         # confidence=0.5 < threshold=0.7 → allow
@@ -195,7 +197,7 @@ class TestPolicyEngine:
         """Sensitivity=0 means threshold=1.0 (only block with 100% confidence)."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "sensitivity": 0.0}}
+            categories={"prompt_injection": {"action": "block", "sensitivity": 0.0}},
         )
         # sensitivity=0.0 → threshold=1.0
         # confidence=0.99 < threshold=1.0 → allow
@@ -209,7 +211,7 @@ class TestPolicyEngine:
         """Sensitivity=1 means threshold=0.0 (block everything detected)."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "sensitivity": 1.0}}
+            categories={"prompt_injection": {"action": "block", "sensitivity": 1.0}},
         )
         # sensitivity=1.0 → threshold=0.0
         # confidence=0.01 >= threshold=0.0 → block
@@ -223,7 +225,7 @@ class TestPolicyEngine:
         """Sensitivity above 1.0 should be clamped to 1.0 (threshold=0.0)."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "sensitivity": 1.5}}
+            categories={"prompt_injection": {"action": "block", "sensitivity": 1.5}},
         )
         # sensitivity=1.5 clamped to 1.0 → threshold=0.0
         scan_result = ScanResult(action="block", category="prompt_injection", confidence=0.01)
@@ -236,7 +238,7 @@ class TestPolicyEngine:
         """Sensitivity below 0.0 should be clamped to 0.0 (threshold=1.0)."""
         engine = PolicyEngine(
             default_action="block",
-            categories={"prompt_injection": {"action": "block", "sensitivity": -0.5}}
+            categories={"prompt_injection": {"action": "block", "sensitivity": -0.5}},
         )
         # sensitivity=-0.5 clamped to 0.0 → threshold=1.0
         scan_result = ScanResult(action="block", category="prompt_injection", confidence=0.99)
@@ -281,7 +283,7 @@ class TestPolicyWithSignatureCategories:
                 "prompt-injection": {"action": "block", "threshold": 0.9},
                 "jailbreak": {"action": "block", "threshold": 0.8},
                 "encoding-bypass": {"action": "warn", "threshold": 0.7},
-            }
+            },
         )
 
         # Below threshold → allow
@@ -304,7 +306,7 @@ class TestPolicyWithSignatureCategories:
                 "prompt-injection": {"action": "block", "sensitivity": 0.9},  # threshold=0.1
                 "jailbreak": {"action": "block", "sensitivity": 0.5},  # threshold=0.5
                 "unicode-evasion": {"action": "warn", "sensitivity": 0.3},  # threshold=0.7
-            }
+            },
         )
 
         # High sensitivity (low threshold) blocks lower confidence
@@ -327,7 +329,7 @@ class TestPolicyWithSignatureCategories:
             allowlists=[
                 {"client_id": "encoding-test-tool", "categories": ["encoding-bypass"]},
                 {"client_id": "security-scanner", "categories": ["*"]},
-            ]
+            ],
         )
 
         # Specific category allowlist
@@ -351,7 +353,7 @@ class TestPolicyWithSignatureCategories:
                 "jailbreak": {"action": "block", "sensitivity": 0.7},  # sensitivity → threshold=0.3
                 "delimiter-injection": {"action": "warn", "threshold": 0.6},
                 "indirect-injection": {"action": "log", "sensitivity": 0.4},  # threshold=0.6
-            }
+            },
         )
 
         # threshold=0.8, confidence=0.7 → allow

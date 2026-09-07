@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class CachedResponse:
     """A stored upstream response plus the accounting needed for savings."""
@@ -69,7 +70,9 @@ def is_cacheable(body: dict) -> bool:
     if not (temperature == 0 or body.get("seed") is not None):
         return False
     # No multimodal content — chat `messages` or Responses-API `input` with parts.
-    return not (_has_multimodal_parts(body.get("messages")) or _has_multimodal_parts(body.get("input")))
+    return not (
+        _has_multimodal_parts(body.get("messages")) or _has_multimodal_parts(body.get("input"))
+    )
 
 
 class ResponseCache:
