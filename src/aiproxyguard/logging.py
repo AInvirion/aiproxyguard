@@ -51,7 +51,7 @@ class RedactingFilter(logging.Filter):
         self, args: tuple[Any, ...] | Mapping[str, Any]
     ) -> tuple[Any, ...] | dict[str, Any]:
         """Redact sensitive patterns in log arguments."""
-        if isinstance(args, dict):
+        if isinstance(args, Mapping):
             return {k: self._redact_value(v) for k, v in args.items()}
         return tuple(self._redact_value(arg) for arg in args)
 

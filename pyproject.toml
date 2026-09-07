@@ -69,10 +69,18 @@ exclude = ["security_analysis"]
 ignore = ["BLE001"]
 
 [tool.mypy]
-# 3.12 rather than the 3.11 floor in requires-python: numpy is imported directly
-# by the ONNX backend and its bundled stubs use PEP 695 `type` aliases, which
-# mypy refuses to parse when told to target 3.11. Runtime 3.11 compatibility is
-# still enforced by ruff's target-version = "py311".
+# 3.12 rather than the 3.11 floor in requires-python. numpy is imported directly
+# by the ONNX backend, and on Python 3.12 the resolver picks numpy 2.5.x, whose
+# stubs use PEP 695 `type` aliases:
+#
+#   numpy/__init__.pyi:737: error: Type statement is only supported in
+#   Python 3.12 and greater  [syntax]
+#
+# That is a parse-time failure, so neither follow_imports nor a per-module
+# disable_error_code suppresses it. Only the 3.12 CI leg hits it -- Python 3.11
+# resolves numpy 2.4.x, which predates those aliases -- so it stays invisible
+# until the matrix runs. Runtime 3.11 support is unchanged and still enforced by
+# ruff's target-version = "py311".
 python_version = "3.12"
 strict = true
 
@@ -83,10 +91,3 @@ strict = true
 module = ["hyperscan", "re2", "joblib.*", "onnxruntime.*", "transformers.*"]
 ignore_missing_imports = true
 
-# numpy arrives transitively via scikit-learn. Its bundled stubs use PEP 695
-# `type` aliases, which mypy rejects while checking against python_version
-# 3.11, so don't follow them -- nothing here is annotated with numpy types.
-[[tool.mypy.overrides]]
-module = ["numpy", "numpy.*"]
-follow_imports = "skip"
-ignore_missing_imports = true
