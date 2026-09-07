@@ -120,7 +120,7 @@ def has_hex_escapes(text: str) -> bool:
 def decode_hex_escapes(text: str) -> str:
     """Decode hex escape sequences like \\x69 -> 'i'."""
 
-    def replace_hex(match: re.Match) -> str:
+    def replace_hex(match: re.Match[str]) -> str:
         try:
             return chr(int(match.group(1), 16))
         except (ValueError, OverflowError):

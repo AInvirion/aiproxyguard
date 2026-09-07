@@ -234,7 +234,7 @@ class ONNXBackend:
             logger.error(f"ONNX prediction failed: {e}")
             return []
 
-    def load_from_bytes(self, model_bytes: bytes, config: dict | None = None) -> None:
+    def load_from_bytes(self, model_bytes: bytes, config: dict[str, Any] | None = None) -> None:
         """Load ONNX model from bytes.
 
         Args:

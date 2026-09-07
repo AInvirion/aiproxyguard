@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 if TYPE_CHECKING:
-    from aiproxyguard.config import Config
+    from aiproxyguard.config import Config, UpstreamConfig
     from aiproxyguard.tls import CertificateAuthority
 
 from aiproxyguard.identity import IdentityResolver
@@ -95,7 +95,7 @@ class TLSInterceptProxy:
         self._metrics = metrics
         self._http_session: aiohttp.ClientSession | None = None
         # Map allowed hostnames to their upstream config (provider name, config)
-        self._host_to_upstream: dict[str, tuple[str, object]] = self._build_host_map(config)
+        self._host_to_upstream: dict[str, tuple[str, UpstreamConfig]] = self._build_host_map(config)
         self._allowed_hosts: set[str] = set(self._host_to_upstream)
         # Same response cache + cost-optimization mutators as the HTTP path.
         from aiproxyguard.server import (
@@ -113,9 +113,9 @@ class TLSInterceptProxy:
         )
         register_cost_optimization_mutators(self._pipeline, config)
 
-    def _build_host_map(self, config: Config) -> dict[str, tuple[str, object]]:
+    def _build_host_map(self, config: Config) -> dict[str, tuple[str, UpstreamConfig]]:
         """Map upstream hostnames to (provider name, upstream config)."""
-        host_map: dict[str, tuple[str, object]] = {}
+        host_map: dict[str, tuple[str, UpstreamConfig]] = {}
         for provider, upstream in config.upstreams.items():
             parsed = urlparse(upstream.url)
             if parsed.hostname:

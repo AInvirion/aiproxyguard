@@ -43,6 +43,7 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.16,<0.17",
     "mypy>=1.8.0",
+    "types-PyYAML>=6.0.0",
     "scikit-learn>=1.4.0",
     "joblib>=1.3.0",
 ]
@@ -68,5 +69,24 @@ exclude = ["security_analysis"]
 ignore = ["BLE001"]
 
 [tool.mypy]
-python_version = "3.11"
+# 3.12 rather than the 3.11 floor in requires-python: numpy is imported directly
+# by the ONNX backend and its bundled stubs use PEP 695 `type` aliases, which
+# mypy refuses to parse when told to target 3.11. Runtime 3.11 compatibility is
+# still enforced by ruff's target-version = "py311".
+python_version = "3.12"
 strict = true
+
+# Optional / native backends that ship no py.typed marker. Each is imported
+# behind a runtime availability check, so the untyped surface is confined to
+# the adapter module that wraps it.
+[[tool.mypy.overrides]]
+module = ["hyperscan", "re2", "joblib.*", "onnxruntime.*", "transformers.*"]
+ignore_missing_imports = true
+
+# numpy arrives transitively via scikit-learn. Its bundled stubs use PEP 695
+# `type` aliases, which mypy rejects while checking against python_version
+# 3.11, so don't follow them -- nothing here is annotated with numpy types.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+ignore_missing_imports = true

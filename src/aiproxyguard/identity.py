@@ -111,7 +111,7 @@ class IdentityResolver:
     def _resolve_token(self, headers: dict[str, Any]) -> str:
         """Resolve from authorization token."""
         headers_lower = {k.lower(): v for k, v in headers.items()}
-        auth = headers_lower.get("authorization", "")
+        auth = str(headers_lower.get("authorization", "") or "")
 
         if not auth:
             return "unknown"

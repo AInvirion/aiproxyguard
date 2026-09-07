@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from aiproxyguard.config import MLClassifierConfig, ScannerConfig
@@ -110,33 +110,39 @@ class ScannerPipeline:
                     )
 
         if self._heuristics_scanner:
-            for match in self._heuristics_scanner.scan(text):
-                all_details.append(match.description)
-                score = (action_priority.get("warn", 0), match.confidence)
+            for heuristic_match in self._heuristics_scanner.scan(text):
+                all_details.append(heuristic_match.description)
+                score = (action_priority.get("warn", 0), heuristic_match.confidence)
                 if score > best_score:
                     best_score = score
-                    best = ("warn", "encoding-bypass", None, match.description, match.confidence)
+                    best = (
+                        "warn",
+                        "encoding-bypass",
+                        None,
+                        heuristic_match.description,
+                        heuristic_match.confidence,
+                    )
 
         if self._ml_classifier and self._ml_classifier.is_available():
-            for match in self._ml_classifier.predict(text):
+            for ml_match in self._ml_classifier.predict(text):
                 # Skip non-threat categories (e.g., "safe", "benign")
-                if match.category.lower() in ("safe", "benign", "normal", "clean"):
+                if ml_match.category.lower() in ("safe", "benign", "normal", "clean"):
                     continue
                 # Normalize category slug (prompt_injection -> prompt-injection)
-                normalized_category = normalize_category_slug(match.category)
-                detail = f"ml:{match.model_id}:{normalized_category}:{match.confidence:.2f}"
+                normalized_category = normalize_category_slug(ml_match.category)
+                detail = f"ml:{ml_match.model_id}:{normalized_category}:{ml_match.confidence:.2f}"
                 all_details.append(detail)
                 # Use configured action from MLClassifierConfig
                 ml_action = self._ml_classifier._config.action
-                score = (action_priority.get(ml_action, 0), match.confidence)
+                score = (action_priority.get(ml_action, 0), ml_match.confidence)
                 if score > best_score:
                     best_score = score
                     best = (
                         ml_action,
                         normalized_category,
-                        match.model_id,
+                        ml_match.model_id,
                         detail,
-                        match.confidence,
+                        ml_match.confidence,
                     )
 
         if best is None:
@@ -216,7 +222,9 @@ class ScannerPipeline:
         """
         self._ml_model_tier_rank = -1
 
-    def load_ml_from_bytes(self, model_data: bytes, model_config: dict | None = None) -> bool:
+    def load_ml_from_bytes(
+        self, model_data: bytes, model_config: dict[str, Any] | None = None
+    ) -> bool:
         """Load ML model from bytes (e.g., from control plane sync).
 
         Args:
@@ -249,7 +257,7 @@ class ScannerPipeline:
             self._ml_model_tier_rank = max(self._ml_model_tier_rank, new_rank)
         return loaded
 
-    def update_scanner_config(self, config: dict) -> None:
+    def update_scanner_config(self, config: dict[str, Any]) -> None:
         """Update scanner configuration from control plane.
 
         Args:
@@ -299,7 +307,7 @@ class ScannerPipeline:
             self._config.response.enabled = False
             self._response_scanner = None
 
-    def update_ml_config(self, config: dict) -> None:
+    def update_ml_config(self, config: dict[str, Any]) -> None:
         """Update ML classifier configuration from control plane.
 
         Args:

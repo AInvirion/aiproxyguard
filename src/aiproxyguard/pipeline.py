@@ -683,7 +683,11 @@ class RequestPipeline:
                     # Recompute the key from the FINAL served body so a 5xx fallback
                     # to a different model is stored under that model's key, never
                     # the originally-requested one.
-                    if cache_key is not None and 200 <= resp.status < 300:
+                    if (
+                        self._cache is not None
+                        and cache_key is not None
+                        and 200 <= resp.status < 300
+                    ):
                         store_key = self._cache.compute_key(
                             target.provider, request.path, attempt_body
                         )
@@ -1002,6 +1006,8 @@ class RequestPipeline:
     async def _cache_store(
         self, cache_key: str, response_body: bytes, content_type: str, status: int
     ) -> None:
+        if self._cache is None:  # pragma: no cover - guarded at the call site
+            return
         # Stash billed tokens + model alongside the body so a future hit can
         # attribute the avoided spend (savings telemetry lands in #307 phase 2).
         input_tokens = output_tokens = 0

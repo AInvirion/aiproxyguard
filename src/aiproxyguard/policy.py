@@ -83,7 +83,7 @@ class PolicyEngine:
         # Get category config
         cat_config = self.categories.get(category, {})
         threshold = self._get_threshold(cat_config)
-        action = cat_config.get("action", self.default_action)
+        action = str(cat_config.get("action", self.default_action))
 
         # Check threshold
         if confidence < threshold:
@@ -106,8 +106,8 @@ class PolicyEngine:
         """
         if "sensitivity" in cat_config:
             sensitivity = cat_config["sensitivity"]
-            return max(0.0, min(1.0, 1.0 - sensitivity))
-        return cat_config.get("threshold", 0.0)
+            return max(0.0, min(1.0, 1.0 - float(sensitivity)))
+        return float(cat_config.get("threshold", 0.0))
 
     def is_allowlisted(self, client_id: str, category: str) -> bool:
         """Check if client is allowlisted for a category."""
@@ -117,7 +117,7 @@ class PolicyEngine:
         allowed = self._allowlist_index[client_id]
         return "*" in allowed or category in allowed
 
-    def update_config(self, config: dict) -> None:
+    def update_config(self, config: dict[str, Any]) -> None:
         """Update policy configuration from control plane.
 
         Args:

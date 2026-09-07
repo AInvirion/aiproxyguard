@@ -124,7 +124,7 @@ class HyperscanScanner(BaseRegexScanner):
 
     def __init__(self, signatures: SignatureSet) -> None:
         super().__init__(signatures)
-        self._db: hyperscan.Database | None = None  # type: ignore[name-defined]
+        self._db: hyperscan.Database | None = None
         self._pattern_map: list[tuple[str, Signature]] = []
         # Thread-local storage for scratch spaces to avoid HS_SCRATCH_IN_USE (-10) errors
         self._scratch_local = threading.local()
@@ -197,7 +197,7 @@ class HyperscanScanner(BaseRegexScanner):
                 logger.error(f"Failed to compile Hyperscan database: {e}")
                 self._db = None
 
-    def _get_scratch(self) -> hyperscan.Scratch | None:  # type: ignore[name-defined]
+    def _get_scratch(self) -> hyperscan.Scratch | None:
         """Get or create a thread-local scratch space for the current database."""
         import hyperscan
 
@@ -301,7 +301,7 @@ class Re2Scanner(BaseRegexScanner):
 
     def __init__(self, signatures: SignatureSet) -> None:
         super().__init__(signatures)
-        self._compiled: list[tuple[re2._Regexp, str, Signature]] = []  # type: ignore[name-defined]
+        self._compiled: list[tuple[re2._Regexp, str, Signature]] = []
         self._compile_patterns()
 
     def _compile_patterns(self) -> None:

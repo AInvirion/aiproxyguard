@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
@@ -46,7 +47,9 @@ class RedactingFilter(logging.Filter):
             record.args = self._redact_args(record.args)
         return True
 
-    def _redact_args(self, args: tuple | dict) -> tuple | dict:
+    def _redact_args(
+        self, args: tuple[Any, ...] | Mapping[str, Any]
+    ) -> tuple[Any, ...] | dict[str, Any]:
         """Redact sensitive patterns in log arguments."""
         if isinstance(args, dict):
             return {k: self._redact_value(v) for k, v in args.items()}
