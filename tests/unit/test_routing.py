@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 
 from aiproxyguard.routing import (
     capability_ok,
@@ -142,7 +143,7 @@ class TestRewriteModel:
 
 
 class TestSelectDowngrade:
-    PAIRS = [
+    PAIRS: ClassVar[list[dict[str, str]]] = [
         {"provider": "openai", "from": "gpt-4o", "to": "gpt-4o-mini"},
         {"provider": "anthropic", "from": "claude-x", "to": "claude-haiku"},
     ]

@@ -23,6 +23,7 @@ This module provides persistence for offline support:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -202,7 +203,7 @@ def load_bundle_cache(bundle_id: str) -> tuple[bytes, dict[str, Any]] | None:
         expires_at_str = license_data.get("expires_at")
         if expires_at_str:
             expires_at = datetime.fromisoformat(
-                expires_at_str.replace("Z", "+00:00")
+                expires_at_str
             )
             if datetime.now(UTC) > expires_at:
                 logger.info(f"Cached license for {bundle_id} expired at {expires_at}")
@@ -293,12 +294,11 @@ def clear_expired_cache() -> int:
 
                 if expires_at_str:
                     expires_at = datetime.fromisoformat(
-                        expires_at_str.replace("Z", "+00:00")
+                        expires_at_str
                     )
-                    if now > expires_at:
-                        if clear_bundle_cache(bundle_id):
-                            removed += 1
-                            logger.info(f"Removed expired cache for {bundle_id}")
+                    if now > expires_at and clear_bundle_cache(bundle_id):
+                        removed += 1
+                        logger.info(f"Removed expired cache for {bundle_id}")
 
         except Exception as e:
             logger.warning(f"Error checking expiration for {bundle_id}: {e}")
@@ -343,17 +343,15 @@ def get_cache_stats() -> dict[str, Any]:
             # Check expiration
             license_file = bundle_dir / "license.json"
             if license_file.exists():
-                try:
+                with contextlib.suppress(Exception):
                     license_data = json.loads(license_file.read_text())
                     expires_at_str = license_data.get("expires_at")
                     if expires_at_str:
                         expires_at = datetime.fromisoformat(
-                            expires_at_str.replace("Z", "+00:00")
+                            expires_at_str
                         )
                         if now > expires_at:
                             expired_bundles += 1
-                except Exception:
-                    pass
 
         return {
             "cache_dir": str(cache_dir),

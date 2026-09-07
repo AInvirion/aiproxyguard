@@ -20,19 +20,19 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 
 class RedactingFilter(logging.Filter):
     """Filter that redacts sensitive values from log records."""
 
-    SENSITIVE_PATTERNS = [
+    SENSITIVE_PATTERNS: ClassVar[list[re.Pattern[str]]] = [
         re.compile(r"(sk-[a-zA-Z0-9]+)"),
         re.compile(r"(sk-ant-[a-zA-Z0-9-]+)"),
         re.compile(r"(Bearer\s+)([a-zA-Z0-9._-]+)"),
     ]
 
-    SENSITIVE_HEADERS = {"authorization", "api-key", "x-api-key"}
+    SENSITIVE_HEADERS: ClassVar[set[str]] = {"authorization", "api-key", "x-api-key"}
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Redact sensitive information from the log record."""

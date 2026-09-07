@@ -249,7 +249,7 @@ class TestSSEResponseHandler:
 
         # First chunk - should buffer (not enough content)
         chunk1 = b"data: Hello\n\n"
-        result1, scan1 = await handler.process_chunk(chunk1)
+        result1, _scan1 = await handler.process_chunk(chunk1)
         assert result1 is None  # Buffering, not forwarding yet
 
         # Second chunk - should trigger scan and forward

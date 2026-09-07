@@ -130,7 +130,7 @@ class CertificateAuthority:
         with open(self._ca_key_path, "rb") as f:
             key = serialization.load_pem_private_key(f.read(), password=None)
             if not isinstance(key, rsa.RSAPrivateKey):
-                raise ValueError("CA key must be RSA")
+                raise TypeError("CA key must be RSA")
             self._ca_key = key
 
         self._loaded = True

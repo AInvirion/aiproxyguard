@@ -60,7 +60,7 @@ class TestEligibility:
 
 class TestComputeKey:
     def _cache(self, **ov):
-        kw = dict(redis_url="redis://x", enabled=True, namespace="ns1")
+        kw = {"redis_url": "redis://x", "enabled": True, "namespace": "ns1"}
         kw.update(ov)
         return ResponseCache(**kw)
 

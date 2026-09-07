@@ -21,6 +21,7 @@ connections, allowing inspection of HTTPS traffic to upstream LLM providers.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ssl
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -210,11 +211,9 @@ class TLSInterceptProxy:
         except Exception as e:
             logger.error(f"Connection handler error: {e}", extra={"peer": peername})
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 writer.close()
                 await writer.wait_closed()
-            except Exception:
-                pass
 
     async def _handle_connect(
         self,

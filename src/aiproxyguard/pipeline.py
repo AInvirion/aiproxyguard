@@ -28,6 +28,7 @@ the raw bytes are forwarded (fail-open).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fnmatch
 import json
 import time
@@ -157,15 +158,13 @@ def _extract_model_and_tokens(text: str) -> tuple[str | None, int | None]:
     """Best-effort model name and token count extraction for telemetry."""
     model = None
     input_tokens = None
-    try:
+    with contextlib.suppress(Exception):  # Best effort - don't fail the block
         body_json = json.loads(text)
         if isinstance(body_json, dict):
             model = body_json.get("model")
             if model is not None:
                 model = str(model)[:100]  # Truncate to 100 chars
         input_tokens = count_tokens(text, model)
-    except Exception:
-        pass  # Best effort - don't fail the block
     return model, input_tokens
 
 
@@ -968,7 +967,7 @@ class RequestPipeline:
         # attribute the avoided spend (savings telemetry lands in #307 phase 2).
         input_tokens = output_tokens = 0
         model = None
-        try:
+        with contextlib.suppress(Exception):
             response_json = json.loads(response_body)
             if isinstance(response_json, dict):
                 raw_model = response_json.get("model")
@@ -976,8 +975,6 @@ class RequestPipeline:
                 billed = billed_tokens(response_json)
                 if billed is not None:
                     input_tokens, output_tokens = billed.input_tokens, billed.output_tokens
-        except Exception:
-            pass
         await self._cache.set(
             cache_key,
             CachedResponse(

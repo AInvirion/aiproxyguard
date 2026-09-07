@@ -110,7 +110,7 @@ class TestONNXBackendWithMock:
 
     def test_load_with_config(self, mock_onnxruntime: tuple) -> None:
         """Test loading with config file."""
-        mock_ort, mock_session = mock_onnxruntime
+        mock_ort, _mock_session = mock_onnxruntime
 
         # Insert mock into sys.modules
         sys.modules["onnxruntime"] = mock_ort
@@ -150,7 +150,7 @@ class TestONNXBackendWithMock:
         """Test prediction with direct probabilities."""
         import numpy as np
 
-        mock_ort, mock_session = mock_onnxruntime
+        _mock_ort, mock_session = mock_onnxruntime
 
         # Mock session that returns probabilities
         mock_session.run.return_value = [np.array([[0.1, 0.8, 0.1]])]
@@ -172,7 +172,7 @@ class TestONNXBackendWithMock:
         """Test prediction with logits requiring softmax."""
         import numpy as np
 
-        mock_ort, mock_session = mock_onnxruntime
+        _mock_ort, mock_session = mock_onnxruntime
 
         # Mock session that returns logits (values outside 0-1 range)
         mock_session.run.return_value = [np.array([[-1.0, 2.0, 0.5]])]

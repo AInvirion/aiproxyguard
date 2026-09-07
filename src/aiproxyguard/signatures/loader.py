@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 from datetime import datetime
@@ -56,10 +57,8 @@ def get_signature_version(path: str) -> str:
     """
     version_file = Path(path) / ".version"
     if version_file.exists():
-        try:
+        with contextlib.suppress(Exception):
             return version_file.read_text().strip()
-        except Exception:
-            pass
     return ""
 
 

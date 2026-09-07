@@ -95,10 +95,11 @@ class ResponseScanner:
         for sig in signatures.signatures:
             # Check if signature applies to response scanning
             scan_target = getattr(sig, "scan_target", "request")
-            if scan_target in ("response", "both"):
-                # Also filter by configured categories if specified
-                if not self._config.categories or sig.category in self._config.categories:
-                    filtered.append(sig)
+            # Also filter by configured categories if specified
+            if scan_target in ("response", "both") and (
+                not self._config.categories or sig.category in self._config.categories
+            ):
+                filtered.append(sig)
 
         return SigSet(signatures=filtered)
 

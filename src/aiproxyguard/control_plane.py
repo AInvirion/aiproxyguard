@@ -495,8 +495,8 @@ class ControlPlaneClient:
             except asyncio.CancelledError:
                 logger.debug("Heartbeat loop cancelled")
                 break
-            except Exception as e:
-                logger.error(f"Heartbeat error: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Heartbeat error")
 
     async def _send_heartbeat(self) -> None:
         """Send a heartbeat to the control plane."""
@@ -599,7 +599,7 @@ class ControlPlaneClient:
             try:
                 # Parse expiration timestamp
                 expires_at = datetime.fromisoformat(
-                    expires_at_str.replace("Z", "+00:00")
+                    expires_at_str
                 )
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=UTC)
@@ -1165,12 +1165,14 @@ class ControlPlaneClient:
                     license = parse_license(license_data)
 
                     # Validate instance binding for cached license
-                    if license.bound_instance_id:
-                        if license.bound_instance_id != self.instance_id:
-                            logger.error(
-                                f"Cached license for {bundle_id} bound to different instance"
-                            )
-                            return None
+                    if (
+                        license.bound_instance_id
+                        and license.bound_instance_id != self.instance_id
+                    ):
+                        logger.error(
+                            f"Cached license for {bundle_id} bound to different instance"
+                        )
+                        return None
 
                     decrypted = decrypt_content(
                         encrypted_bytes,
@@ -1247,13 +1249,14 @@ class ControlPlaneClient:
                 license = parse_license(license_data)
 
                 # Validate instance binding for cached license
-                if license.bound_instance_id:
-                    if license.bound_instance_id != self.instance_id:
-                        logger.warning(
-                            f"Skipping cached bundle {bundle_id}: "
-                            f"bound to different instance"
-                        )
-                        continue
+                if (
+                    license.bound_instance_id
+                    and license.bound_instance_id != self.instance_id
+                ):
+                    logger.warning(
+                        f"Skipping cached bundle {bundle_id}: bound to different instance"
+                    )
+                    continue
 
                 decrypted = decrypt_content(
                     encrypted_bytes,

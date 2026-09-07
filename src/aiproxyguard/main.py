@@ -142,7 +142,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except FileNotFoundError:
         print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
         return 1
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         print(f"Error: Invalid configuration: {e}", file=sys.stderr)
         return 1
 

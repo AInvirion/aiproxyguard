@@ -86,7 +86,8 @@ class TestMLTierSelection:
 
     def test_enterprise_not_overwritten_by_pro(self):
         # bundle order free -> enterprise -> pro (the prod-observed order)
-        assert self._load(p := self._pipeline_with_ml(), "free") is True
+        p = self._pipeline_with_ml()
+        assert self._load(p, "free") is True
         assert self._load(p, "enterprise") is True
         assert self._load(p, "pro") is False  # lower tier skipped
         # the last *applied* model was enterprise

@@ -187,7 +187,7 @@ class TestIsLicenseValid:
         }
 
         # Would fail signature check, but let's test instance binding logic
-        valid, reason = is_license_valid(
+        _valid, reason = is_license_valid(
             license, "", license_data, current_instance_id="instance_abc123"
         )
 
@@ -220,7 +220,7 @@ class TestIsLicenseValid:
         # We skip signature check by using a mock - but for simplicity,
         # the instance check happens after signature check fails
         # Let's verify by creating proper test without signature
-        valid, reason = is_license_valid(
+        valid, _reason = is_license_valid(
             license, "", license_data, current_instance_id="different_instance"
         )
 
@@ -248,7 +248,7 @@ class TestIsLicenseValid:
 
         license_data = {"license_id": "lic_123"}
 
-        valid, reason = is_license_valid(license, "", license_data)
+        valid, _reason = is_license_valid(license, "", license_data)
 
         # Fails signature first, then would fail instance check
         assert not valid
@@ -273,7 +273,7 @@ class TestIsLicenseValid:
         license_data = {"license_id": "lic_123"}
 
         # Would only fail signature check, not instance binding
-        valid, reason = is_license_valid(license, "", license_data)
+        _valid, reason = is_license_valid(license, "", license_data)
 
         assert "instance" not in reason.lower()
 
@@ -313,7 +313,7 @@ class TestParseEncryptedHeader:
         header_bytes = json.dumps(header).encode()
         data = len(header_bytes).to_bytes(4, "big") + header_bytes + b"encrypted"
 
-        result, ciphertext = parse_encrypted_header(data)
+        result, _ciphertext = parse_encrypted_header(data)
 
         assert result.format == "aiproxyguard-encrypted-bundle-v1"
         assert result.resource_id == "sig-enterprise-v1"

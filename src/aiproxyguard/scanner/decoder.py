@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import re
 import urllib.parse
 from dataclasses import dataclass
@@ -37,14 +38,12 @@ def decode_base64(text: str) -> list[DecodedContent]:
     results: list[DecodedContent] = []
     for match in _B64_PATTERN.finditer(text):
         candidate = match.group()
-        try:
+        with contextlib.suppress(Exception):
             decoded = base64.b64decode(candidate).decode('utf-8')
             if decoded.isprintable():
                 results.append(DecodedContent(
                     original=candidate, decoded=decoded, encoding="base64", confidence=0.9
                 ))
-        except Exception:
-            pass
     return results
 
 
@@ -53,12 +52,10 @@ def count_base64_segments(text: str) -> int:
     count = 0
     for match in _B64_PATTERN.finditer(text):
         candidate = match.group()
-        try:
+        with contextlib.suppress(Exception):
             decoded = base64.b64decode(candidate).decode('utf-8')
             if decoded.isprintable():
                 count += 1
-        except Exception:
-            pass
     return count
 
 
@@ -66,14 +63,12 @@ def decode_url(text: str) -> list[DecodedContent]:
     """Decode URL-encoded content - returns full DecodedContent for detailed analysis."""
     results: list[DecodedContent] = []
     if '%' in text:
-        try:
+        with contextlib.suppress(Exception):
             decoded = urllib.parse.unquote(text)
             if decoded != text:
                 results.append(DecodedContent(
                     original=text, decoded=decoded, encoding="url", confidence=0.8
                 ))
-        except Exception:
-            pass
     return results
 
 
