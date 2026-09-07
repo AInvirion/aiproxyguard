@@ -244,8 +244,8 @@ class HyperscanScanner(BaseRegexScanner):
                     start: int,
                     end: int,
                     flags: int,
-                    context: list[ScanMatch],
-                ) -> None:
+                    context: object,
+                ) -> bool | None:
                     """Callback for each Hyperscan match.
 
                     Note: Without SOM_LEFTMOST, start is always 0 (scan offset).
@@ -258,7 +258,7 @@ class HyperscanScanner(BaseRegexScanner):
                         matched_text = text_bytes[estimated_start:end].decode(
                             "utf-8", errors="replace"
                         )
-                        context.append(
+                        matches.append(
                             ScanMatch(
                                 signature=signature,
                                 matched_pattern=pattern,
@@ -267,6 +267,8 @@ class HyperscanScanner(BaseRegexScanner):
                                 end=end,
                             )
                         )
+                    # Falsy return keeps Hyperscan scanning; truthy would halt it.
+                    return None
 
                 try:
                     # Use thread-local scratch to avoid HS_SCRATCH_IN_USE errors
