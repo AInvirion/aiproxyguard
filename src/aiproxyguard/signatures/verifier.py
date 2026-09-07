@@ -122,13 +122,15 @@ class ManifestVerifier:
             )
 
         # Check chain integrity if we have a previous hash
-        if self._last_manifest_hash and previous_hash:
-            if previous_hash != self._last_manifest_hash:
-                return VerificationResult(
-                    valid=False,
-                    error="Chain verification failed: previous_hash mismatch",
-                    sequence=sequence,
-                )
+        if (
+            self._last_manifest_hash and previous_hash
+            and previous_hash != self._last_manifest_hash
+        ):
+            return VerificationResult(
+                valid=False,
+                error="Chain verification failed: previous_hash mismatch",
+                sequence=sequence,
+            )
 
         # Verify the cryptographic signature
         public_key = self._get_public_key()

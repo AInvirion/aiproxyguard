@@ -104,9 +104,7 @@ def capability_ok(body_json: dict[str, Any]) -> bool:
             return False
     if body_json.get("stream"):
         return False
-    if _has_multimodal_content(body_json):
-        return False
-    return True
+    return not _has_multimodal_content(body_json)
 
 
 def select_route(task_cfg: dict[str, Any], capable: bool) -> RoutingDecision | None:

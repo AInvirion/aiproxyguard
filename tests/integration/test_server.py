@@ -17,8 +17,8 @@
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
+from aiproxyguard.config import Config, ScannerConfig, ServerConfig, UpstreamConfig
 from aiproxyguard.server import create_app
-from aiproxyguard.config import Config, ServerConfig, UpstreamConfig, ScannerConfig
 
 
 @pytest.fixture

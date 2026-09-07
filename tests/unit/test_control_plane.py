@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1121,7 +1122,7 @@ class TestModelSyncOrdering:
             yaml_content = "rules: []"
             model_data = b"MODEL"
             model_format = "onnx"
-            model_config = {"model_id": "m", "model_version": "1"}
+            model_config: ClassVar[dict[str, str]] = {"model_id": "m", "model_version": "1"}
 
         monkeypatch.setattr(
             "aiproxyguard.control_plane._extract_bundle_content", lambda d: FakeContent()

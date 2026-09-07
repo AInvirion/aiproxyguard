@@ -13,17 +13,20 @@
 # limitations under the License.
 
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
+from typing import ClassVar
+
 from aiproxyguard.scanner.decoder import (
     count_base64_segments,
-    has_url_encoding,
-    has_zero_width_chars,
-    strip_zero_width,
-    has_hex_escapes,
     decode_hex_escapes,
     decode_rot13,
+    has_hex_escapes,
+    has_url_encoding,
+    has_zero_width_chars,
     strip_non_letters,
+    strip_zero_width,
 )
 
 
@@ -36,7 +39,7 @@ class HeuristicMatch:
 
 
 class HeuristicsScanner:
-    CONFUSABLES = {
+    CONFUSABLES: ClassVar[dict[str, str]] = {
         'а': 'a',
         'е': 'e',
         'і': 'i',
@@ -48,7 +51,7 @@ class HeuristicsScanner:
     }
 
     # Suspicious keywords to detect in decoded/stripped text
-    SUSPICIOUS_PATTERNS = [
+    SUSPICIOUS_PATTERNS: ClassVar[list[re.Pattern[str]]] = [
         re.compile(r'ignore\s*(all\s*)?(previous|prior|above)\s*(instructions?|prompts?|rules?)', re.IGNORECASE),
         re.compile(r'disregard\s*(all\s*)?(previous|prior|above)', re.IGNORECASE),
         re.compile(r'forget\s*(all\s*)?(previous|prior|above)', re.IGNORECASE),
@@ -159,14 +162,16 @@ class HeuristicsScanner:
                 break  # Only report once
 
         # Character insertion detection (emoji, punctuation)
-        if has_significant_noise:
-            if found := self._check_suspicious_patterns(letters_only):
-                if not self._check_suspicious_patterns(text):
-                    matches.append(HeuristicMatch(
-                        heuristic="char_insertion_evasion",
-                        description="Suspicious content hidden with char insertion",
-                        confidence=0.85,
-                        details=f"Hidden: {found}",
-                    ))
+        if (
+            has_significant_noise
+            and (found := self._check_suspicious_patterns(letters_only))
+            and not self._check_suspicious_patterns(text)
+        ):
+            matches.append(HeuristicMatch(
+                heuristic="char_insertion_evasion",
+                description="Suspicious content hidden with char insertion",
+                confidence=0.85,
+                details=f"Hidden: {found}",
+            ))
 
         return matches

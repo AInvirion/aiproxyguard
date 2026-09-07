@@ -21,6 +21,7 @@ connections, allowing inspection of HTTPS traffic to upstream LLM providers.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ssl
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -32,12 +33,12 @@ if TYPE_CHECKING:
     from aiproxyguard.config import Config
     from aiproxyguard.tls import CertificateAuthority
 
+from aiproxyguard.identity import IdentityResolver
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.pipeline import PipelineRequest, RequestPipeline, UpstreamTarget
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScannerPipeline
-from aiproxyguard.identity import IdentityResolver
 
 logger = get_logger("tls_proxy")
 
@@ -79,8 +80,8 @@ class TLSInterceptProxy:
 
     def __init__(
         self,
-        config: "Config",
-        ca: "CertificateAuthority",
+        config: Config,
+        ca: CertificateAuthority,
         scanner: ScannerPipeline,
         policy: PolicyEngine,
         identity: IdentityResolver,
@@ -112,7 +113,7 @@ class TLSInterceptProxy:
         )
         register_cost_optimization_mutators(self._pipeline, config)
 
-    def _build_host_map(self, config: "Config") -> dict[str, tuple[str, object]]:
+    def _build_host_map(self, config: Config) -> dict[str, tuple[str, object]]:
         """Map upstream hostnames to (provider name, upstream config)."""
         host_map: dict[str, tuple[str, object]] = {}
         for provider, upstream in config.upstreams.items():
@@ -210,11 +211,9 @@ class TLSInterceptProxy:
         except Exception as e:
             logger.error(f"Connection handler error: {e}", extra={"peer": peername})
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 writer.close()
                 await writer.wait_closed()
-            except Exception:
-                pass
 
     async def _handle_connect(
         self,
@@ -256,8 +255,8 @@ class TLSInterceptProxy:
             return
 
         # Create server-side SSL context
-        import tempfile
         import os
+        import tempfile
 
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -378,7 +377,7 @@ class TLSInterceptProxy:
                     peername,
                 )
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 break
             except asyncio.IncompleteReadError:
                 break
@@ -512,8 +511,8 @@ class TLSInterceptProxy:
 
 
 async def run_tls_proxy(
-    config: "Config",
-    ca: "CertificateAuthority",
+    config: Config,
+    ca: CertificateAuthority,
     scanner: ScannerPipeline,
     policy: PolicyEngine,
     identity: IdentityResolver,

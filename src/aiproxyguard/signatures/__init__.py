@@ -21,9 +21,9 @@ from aiproxyguard.signatures.verifier import (
 )
 
 __all__ = [
+    "ManifestVerifier",
     "Signature",
     "SignatureSet",
-    "ManifestVerifier",
     "VerificationResult",
     "get_verifier",
     "init_verifier",

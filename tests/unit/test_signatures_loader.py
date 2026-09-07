@@ -13,10 +13,11 @@
 # limitations under the License.
 
 from pathlib import Path
+
 from aiproxyguard.signatures.loader import (
     load_signatures,
-    parse_signatures_from_yaml,
     parse_signatures_from_bundles,
+    parse_signatures_from_yaml,
 )
 
 

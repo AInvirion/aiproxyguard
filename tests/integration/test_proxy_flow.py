@@ -20,11 +20,16 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from aiproxyguard.server import create_app
 from aiproxyguard.config import (
-    Config, ServerConfig, UpstreamConfig, ScannerConfig,
-    PolicyConfig, PolicyCategoryConfig, SignatureConfig
+    Config,
+    PolicyCategoryConfig,
+    PolicyConfig,
+    ScannerConfig,
+    ServerConfig,
+    SignatureConfig,
+    UpstreamConfig,
 )
+from aiproxyguard.server import create_app
 
 # Path to test fixtures
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")

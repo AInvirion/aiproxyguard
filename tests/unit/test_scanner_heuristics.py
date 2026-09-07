@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import base64
+
 from aiproxyguard.scanner.heuristics import HeuristicsScanner
 
 

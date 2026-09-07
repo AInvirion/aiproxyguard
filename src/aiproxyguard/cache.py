@@ -69,9 +69,7 @@ def is_cacheable(body: dict) -> bool:
     if not (temperature == 0 or body.get("seed") is not None):
         return False
     # No multimodal content — chat `messages` or Responses-API `input` with parts.
-    if _has_multimodal_parts(body.get("messages")) or _has_multimodal_parts(body.get("input")):
-        return False
-    return True
+    return not (_has_multimodal_parts(body.get("messages")) or _has_multimodal_parts(body.get("input")))
 
 
 class ResponseCache:

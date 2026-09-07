@@ -307,7 +307,7 @@ def load_config(path: str) -> Config:
     if raw is None:
         raise ValueError(f"Config file is empty: {path}")
     if not isinstance(raw, dict):
-        raise ValueError(f"Config file must be a YAML mapping, got {type(raw).__name__}: {path}")
+        raise TypeError(f"Config file must be a YAML mapping, got {type(raw).__name__}: {path}")
 
     data = _process_value(raw)
 

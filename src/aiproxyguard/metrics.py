@@ -16,8 +16,7 @@
 
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
-
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 # Request metrics
 REQUESTS_TOTAL = Counter(

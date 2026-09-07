@@ -15,18 +15,19 @@
 """Tests for response scanner."""
 
 import asyncio
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
+from aiproxyguard.config import ResponseScannerConfig
 from aiproxyguard.scanner.response import (
+    ResponseBlockedError,
+    ResponseScanMode,
     ResponseScanner,
     ResponseScanResult,
-    ResponseScanMode,
     SSEResponseHandler,
-    ResponseBlockedError,
     scan_streaming_response,
 )
-from aiproxyguard.config import ResponseScannerConfig
 from aiproxyguard.signatures.models import Signature, SignatureSet
 
 
@@ -248,7 +249,7 @@ class TestSSEResponseHandler:
 
         # First chunk - should buffer (not enough content)
         chunk1 = b"data: Hello\n\n"
-        result1, scan1 = await handler.process_chunk(chunk1)
+        result1, _scan1 = await handler.process_chunk(chunk1)
         assert result1 is None  # Buffering, not forwarding yet
 
         # Second chunk - should trigger scan and forward

@@ -14,9 +14,12 @@
 
 """Tests for policy engine."""
 
+from typing import ClassVar
+
+import pytest
+
 from aiproxyguard.policy import PolicyEngine
 from aiproxyguard.scanner.pipeline import ScanResult
-import pytest
 
 
 class TestPolicyEngine:
@@ -251,7 +254,7 @@ class TestPolicyWithSignatureCategories:
     """
 
     # All categories from the signature bundle
-    SIGNATURE_CATEGORIES = [
+    SIGNATURE_CATEGORIES: ClassVar[list[str]] = [
         "prompt-injection",
         "jailbreak",
         "encoding-bypass",

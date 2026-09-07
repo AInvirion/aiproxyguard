@@ -23,16 +23,17 @@ This module implements Phase 4B response scanning with three modes:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from aiproxyguard.config import ResponseScannerConfig
     from aiproxyguard.signatures.models import SignatureSet
 
-from aiproxyguard.scanner.regex import RegexScanner, ScanMatch
 from aiproxyguard.logging import get_logger
+from aiproxyguard.scanner.regex import RegexScanner, ScanMatch
 
 logger = get_logger("response_scanner")
 
@@ -94,10 +95,11 @@ class ResponseScanner:
         for sig in signatures.signatures:
             # Check if signature applies to response scanning
             scan_target = getattr(sig, "scan_target", "request")
-            if scan_target in ("response", "both"):
-                # Also filter by configured categories if specified
-                if not self._config.categories or sig.category in self._config.categories:
-                    filtered.append(sig)
+            # Also filter by configured categories if specified
+            if scan_target in ("response", "both") and (
+                not self._config.categories or sig.category in self._config.categories
+            ):
+                filtered.append(sig)
 
         return SigSet(signatures=filtered)
 

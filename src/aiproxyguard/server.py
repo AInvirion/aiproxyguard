@@ -19,7 +19,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import web
@@ -29,25 +30,25 @@ if TYPE_CHECKING:
     from aiproxyguard.control_plane import ControlPlaneClient
 
 from aiproxyguard import __version__
-from aiproxyguard.signatures.models import SignatureSet
-from aiproxyguard.router import Router
+from aiproxyguard.cache import ResponseCache
+from aiproxyguard.config import _to_bool
+from aiproxyguard.control_plane import get_client, init_client
+from aiproxyguard.cost_optimization import make_cache_control_mutator
 from aiproxyguard.identity import IdentityResolver
+from aiproxyguard.logging import get_logger, update_logging
+from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.pipeline import PipelineRequest, RequestPipeline, UpstreamTarget
 from aiproxyguard.policy import PolicyEngine
+from aiproxyguard.router import Router
 from aiproxyguard.scanner.pipeline import ScannerPipeline
-from aiproxyguard.signatures.loader import load_signatures, get_signature_version
-from aiproxyguard.metrics import MetricsCollector
-from aiproxyguard.logging import get_logger, update_logging
-from aiproxyguard.control_plane import init_client, get_client
-from aiproxyguard.config import _to_bool
-from aiproxyguard.cost_optimization import make_cache_control_mutator
-from aiproxyguard.cache import ResponseCache
+from aiproxyguard.signatures.loader import get_signature_version, load_signatures
+from aiproxyguard.signatures.models import SignatureSet
 
 logger = get_logger("server")
 
 
 def register_cost_optimization_mutators(
-    pipeline: RequestPipeline, config: "Config"
+    pipeline: RequestPipeline, config: Config
 ) -> None:
     """Register cost-optimization body mutators on a pipeline.
 
@@ -59,13 +60,13 @@ def register_cost_optimization_mutators(
 
 
 def register_control_plane_callbacks(
-    cp_client: "ControlPlaneClient",
+    cp_client: ControlPlaneClient,
     *,
     scanner: ScannerPipeline,
     policy: PolicyEngine,
-    config: "Config",
+    config: Config,
     metrics: MetricsCollector,
-    on_signatures_reloaded: "Callable[[SignatureSet], None] | None" = None,
+    on_signatures_reloaded: Callable[[SignatureSet], None] | None = None,
 ) -> None:
     """Wire control-plane config-update callbacks for a proxy instance.
 
@@ -77,7 +78,7 @@ def register_control_plane_callbacks(
     cp_client.set_policy_update_callback(policy.update_config)
 
     # Signature hot-reload
-    def on_signature_update(new_signatures: "SignatureSet") -> None:
+    def on_signature_update(new_signatures: SignatureSet) -> None:
         scanner.reload(new_signatures)
         metrics.set_signatures_loaded("free", len(new_signatures.signatures))
         if on_signatures_reloaded is not None:
@@ -201,7 +202,7 @@ def register_control_plane_callbacks(
     # unrecognized string) is rejected with a warning and leaves the current
     # state unchanged -- never silently coerced to a default that differs from
     # both the pushed value and the running config.
-    def _strict_bool(value: object) -> "bool | None":
+    def _strict_bool(value: object) -> bool | None:
         if isinstance(value, bool):
             return value
         if isinstance(value, str) and value.strip().lower() in (
@@ -289,7 +290,7 @@ async def on_startup(app: web.Application) -> None:
     # Start control plane client
     cp_client = get_client()
     if cp_client:
-        def cache_signatures(new_signatures: "SignatureSet") -> None:
+        def cache_signatures(new_signatures: SignatureSet) -> None:
             app["signatures"] = new_signatures
 
         register_control_plane_callbacks(
@@ -417,7 +418,7 @@ async def check_handler(request: web.Request) -> web.Response:
             "confidence": scan_result.confidence,
         })
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         scan_duration = time.monotonic() - scan_start
         metrics.record_scan("check", "timeout", scan_duration)
         logger.warning(
@@ -604,9 +605,9 @@ async def _run_http_server(config: Config) -> None:
 
 async def _run_tls_server(config: Config) -> None:
     """Run the TLS-intercepting proxy server."""
+    from aiproxyguard.signatures.models import SignatureSet
     from aiproxyguard.tls import CertificateAuthority
     from aiproxyguard.tls_proxy import run_tls_proxy
-    from aiproxyguard.signatures.models import SignatureSet
 
     # Load CA for certificate generation
     ca = CertificateAuthority(

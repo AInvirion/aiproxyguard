@@ -22,7 +22,7 @@ import sys
 
 from aiproxyguard import __version__
 from aiproxyguard.config import load_config
-from aiproxyguard.logging import setup_logging, get_logger
+from aiproxyguard.logging import get_logger, setup_logging
 from aiproxyguard.server import run_server
 
 
@@ -142,7 +142,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except FileNotFoundError:
         print(f"Error: Configuration file not found: {args.config}", file=sys.stderr)
         return 1
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         print(f"Error: Invalid configuration: {e}", file=sys.stderr)
         return 1
 

@@ -18,7 +18,7 @@ import json
 import logging
 from io import StringIO
 
-from aiproxyguard.logging import setup_logging, get_logger, RedactingFilter
+from aiproxyguard.logging import RedactingFilter, get_logger, setup_logging
 
 
 class TestStructuredLogging:

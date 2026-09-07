@@ -41,7 +41,7 @@ dev = [
     "pytest-aiohttp>=1.0.0",
     "pytest-cov>=4.1.0",
     "httpx>=0.27.0",
-    "ruff>=0.3.0",
+    "ruff>=0.16,<0.17",
     "mypy>=1.8.0",
     "scikit-learn>=1.4.0",
     "joblib>=1.3.0",
@@ -58,6 +58,14 @@ testpaths = ["tests"]
 line-length = 100
 target-version = "py311"
 exclude = ["security_analysis"]
+
+[tool.ruff.lint]
+# BLE001 (blind `except Exception`) is off by design. The proxy sits in the
+# request path: a Redis hiccup, a malformed cached entry or an optional ML
+# backend failing must degrade to a logged warning, never take the process
+# down. Every remaining broad handler logs or returns a safe fallback;
+# genuine "ignore this" cases use contextlib.suppress instead.
+ignore = ["BLE001"]
 
 [tool.mypy]
 python_version = "3.11"

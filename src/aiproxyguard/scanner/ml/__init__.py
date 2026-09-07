@@ -30,18 +30,15 @@ from aiproxyguard.scanner.ml.metrics import (
 )
 
 __all__ = [
-    # Classifier
-    "MLClassifier",
-    "MLMatch",
-    # License
     "License",
+    "MLClassifier",
+    "MLClassifierMetrics",
+    "MLMatch",
     "decrypt_model",
+    "get_ml_metrics",
     "is_license_valid",
     "load_licensed_model",
     "parse_license",
-    "verify_license_signature",
-    # Metrics
-    "MLClassifierMetrics",
-    "get_ml_metrics",
     "reset_ml_metrics",
+    "verify_license_signature",
 ]

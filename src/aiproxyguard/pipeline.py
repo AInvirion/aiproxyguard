@@ -28,11 +28,13 @@ the raw bytes are forwarded (fail-open).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fnmatch
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
@@ -40,11 +42,11 @@ if TYPE_CHECKING:
     from aiproxyguard.config import Config
 
 from aiproxyguard.cache import CachedResponse, ResponseCache
+from aiproxyguard.complexity import extract_prompt_text, score_text
 from aiproxyguard.control_plane import get_client
 from aiproxyguard.logging import get_logger
 from aiproxyguard.metrics import MetricsCollector
 from aiproxyguard.policy import PolicyEngine
-from aiproxyguard.complexity import extract_prompt_text, score_text
 from aiproxyguard.routing import (
     ROUTED_MODEL_HEADER,
     ROUTING_DECISION_HEADER,
@@ -156,15 +158,13 @@ def _extract_model_and_tokens(text: str) -> tuple[str | None, int | None]:
     """Best-effort model name and token count extraction for telemetry."""
     model = None
     input_tokens = None
-    try:
+    with contextlib.suppress(Exception):  # Best effort - don't fail the block
         body_json = json.loads(text)
         if isinstance(body_json, dict):
             model = body_json.get("model")
             if model is not None:
                 model = str(model)[:100]  # Truncate to 100 chars
         input_tokens = count_tokens(text, model)
-    except Exception:
-        pass  # Best effort - don't fail the block
     return model, input_tokens
 
 
@@ -173,7 +173,7 @@ class RequestPipeline:
 
     def __init__(
         self,
-        config: "Config",
+        config: Config,
         scanner: ScannerPipeline,
         policy: PolicyEngine,
         metrics: MetricsCollector,
@@ -489,7 +489,7 @@ class RequestPipeline:
                         "signature_id": scan_result.signature_id,
                     },
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Scanner timed out - use failure mode
             scan_duration = time.monotonic() - scan_start
             self._metrics.record_scan("pipeline", "timeout", scan_duration)
@@ -814,7 +814,7 @@ class RequestPipeline:
                         "client_id": request.client_id,
                     },
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             scan_duration = time.monotonic() - scan_start
             self._metrics.record_scan("response", "timeout", scan_duration)
             logger.warning(
@@ -967,7 +967,7 @@ class RequestPipeline:
         # attribute the avoided spend (savings telemetry lands in #307 phase 2).
         input_tokens = output_tokens = 0
         model = None
-        try:
+        with contextlib.suppress(Exception):
             response_json = json.loads(response_body)
             if isinstance(response_json, dict):
                 raw_model = response_json.get("model")
@@ -975,8 +975,6 @@ class RequestPipeline:
                 billed = billed_tokens(response_json)
                 if billed is not None:
                     input_tokens, output_tokens = billed.input_tokens, billed.output_tokens
-        except Exception:
-            pass
         await self._cache.set(
             cache_key,
             CachedResponse(

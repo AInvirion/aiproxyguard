@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -49,7 +49,7 @@ class TestSaveBundleCache:
         license_data = {
             "license_id": "lic_123",
             "bundle_id": "test-bundle",
-            "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+            "expires_at": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
         }
 
         result = save_bundle_cache("test-bundle", b"encrypted_content", license_data)
@@ -141,7 +141,7 @@ class TestLoadBundleCache:
 
     def test_load_returns_saved_data(self, temp_cache_dir) -> None:
         """Test loading returns what was saved."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         license_data = {
             "license_id": "lic_789",
             "expires_at": future.isoformat(),
@@ -163,7 +163,7 @@ class TestLoadBundleCache:
 
     def test_load_expired_returns_none(self, temp_cache_dir) -> None:
         """Test loading expired bundle returns None."""
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
+        past = datetime.now(UTC) - timedelta(hours=1)
         license_data = {
             "license_id": "lic_expired",
             "expires_at": past.isoformat(),
@@ -185,7 +185,7 @@ class TestListCachedBundles:
 
     def test_list_multiple_bundles(self, temp_cache_dir) -> None:
         """Test listing multiple cached bundles."""
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        future = datetime.now(UTC) + timedelta(days=30)
         license_data = {"expires_at": future.isoformat()}
 
         save_bundle_cache("bundle-a", b"data-a", license_data)
@@ -226,8 +226,8 @@ class TestClearExpiredCache:
 
     def test_clear_only_expired(self, temp_cache_dir) -> None:
         """Test that only expired bundles are cleared."""
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        past = datetime.now(UTC) - timedelta(hours=1)
+        future = datetime.now(UTC) + timedelta(days=30)
 
         save_bundle_cache("active", b"data", {"expires_at": future.isoformat()})
         save_bundle_cache("expired-1", b"data", {"expires_at": past.isoformat()})
@@ -254,8 +254,8 @@ class TestGetCacheStats:
 
     def test_stats_with_bundles(self, temp_cache_dir) -> None:
         """Test stats with bundles."""
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
-        future = datetime.now(timezone.utc) + timedelta(days=30)
+        past = datetime.now(UTC) - timedelta(hours=1)
+        future = datetime.now(UTC) + timedelta(days=30)
 
         save_bundle_cache("active", b"x" * 100, {"expires_at": future.isoformat()})
         save_bundle_cache("expired", b"y" * 50, {"expires_at": past.isoformat()})

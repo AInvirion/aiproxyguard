@@ -15,8 +15,9 @@
 """Tests for request router."""
 
 import pytest
-from aiproxyguard.router import Router
+
 from aiproxyguard.config import UpstreamConfig
+from aiproxyguard.router import Router
 
 
 class TestRouter:

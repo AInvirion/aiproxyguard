@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +242,5 @@ def get_ml_metrics() -> MLClassifierMetrics:
 
 def reset_ml_metrics() -> None:
     """Reset the global ML classifier metrics."""
-    global _metrics
     if _metrics:
         _metrics.reset()

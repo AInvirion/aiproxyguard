@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ class SignatureBundle:
         """Check if this bundle's license has expired."""
         if self.expires_at is None:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        return datetime.now(UTC) > self.expires_at
 
     @property
     def is_free(self) -> bool:
@@ -70,7 +70,7 @@ class SignatureBundle:
         """Get seconds until expiration, or None if no expiration."""
         if self.expires_at is None:
             return None
-        delta = self.expires_at - datetime.now(timezone.utc)
+        delta = self.expires_at - datetime.now(UTC)
         return delta.total_seconds()
 
     def __repr__(self) -> str:

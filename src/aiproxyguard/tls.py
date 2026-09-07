@@ -26,14 +26,14 @@ import ssl
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID, ExtensionOID
+from cryptography.x509.oid import ExtensionOID, NameOID
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
@@ -130,7 +130,7 @@ class CertificateAuthority:
         with open(self._ca_key_path, "rb") as f:
             key = serialization.load_pem_private_key(f.read(), password=None)
             if not isinstance(key, rsa.RSAPrivateKey):
-                raise ValueError("CA key must be RSA")
+                raise TypeError("CA key must be RSA")
             self._ca_key = key
 
         self._loaded = True
@@ -143,14 +143,14 @@ class CertificateAuthority:
         )
 
     @property
-    def ca_cert(self) -> "Certificate":
+    def ca_cert(self) -> Certificate:
         """Get the CA certificate."""
         if not self._loaded or self._ca_cert is None:
             raise RuntimeError("CA not loaded. Call load() first.")
         return self._ca_cert
 
     @property
-    def ca_key(self) -> "RSAPrivateKey":
+    def ca_key(self) -> RSAPrivateKey:
         """Get the CA private key."""
         if not self._loaded or self._ca_key is None:
             raise RuntimeError("CA not loaded. Call load() first.")
@@ -177,7 +177,7 @@ class CertificateAuthority:
         )
 
         # Create certificate
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Start validity slightly in the past to handle clock skew
         not_before = now - timedelta(hours=1)
         not_after = now + timedelta(days=self._cert_validity_days)
@@ -376,7 +376,7 @@ def generate_ca(
     ])
 
     # Set validity period
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     not_before = now - timedelta(hours=1)  # Handle clock skew
     not_after = now + timedelta(days=validity_days)
 

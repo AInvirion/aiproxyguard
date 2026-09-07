@@ -14,8 +14,10 @@
 
 """Tests for configuration loading."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from aiproxyguard.config import load_config
 
 

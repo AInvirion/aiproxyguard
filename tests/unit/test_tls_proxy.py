@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from unittest.mock import MagicMock
 
 
-
 @dataclass
 class MockUpstreamConfig:
     """Mock upstream configuration."""

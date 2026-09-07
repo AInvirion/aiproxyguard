@@ -19,20 +19,20 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, ClassVar
 
 
 class RedactingFilter(logging.Filter):
     """Filter that redacts sensitive values from log records."""
 
-    SENSITIVE_PATTERNS = [
+    SENSITIVE_PATTERNS: ClassVar[list[re.Pattern[str]]] = [
         re.compile(r"(sk-[a-zA-Z0-9]+)"),
         re.compile(r"(sk-ant-[a-zA-Z0-9-]+)"),
         re.compile(r"(Bearer\s+)([a-zA-Z0-9._-]+)"),
     ]
 
-    SENSITIVE_HEADERS = {"authorization", "api-key", "x-api-key"}
+    SENSITIVE_HEADERS: ClassVar[set[str]] = {"authorization", "api-key", "x-api-key"}
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Redact sensitive information from the log record."""
@@ -81,7 +81,7 @@ class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON."""
         data: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
             "message": record.getMessage(),

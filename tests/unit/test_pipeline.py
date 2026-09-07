@@ -20,8 +20,10 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from aiproxyguard.cache import CachedResponse, is_cacheable
 from aiproxyguard.pipeline import (
     CACHE_STATUS_HEADER,
     PipelineRequest,
@@ -29,7 +31,6 @@ from aiproxyguard.pipeline import (
     RequestPipeline,
     UpstreamTarget,
 )
-from aiproxyguard.cache import CachedResponse, is_cacheable
 
 
 @dataclass
@@ -112,7 +113,7 @@ class FakeResponse:
     async def read(self) -> bytes:
         return self._body
 
-    async def __aenter__(self) -> "FakeResponse":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -395,14 +396,14 @@ class TestResponseScanTimeout:
         return pipeline, session
 
     async def test_response_timeout_open_passes_through(self) -> None:
-        pipeline, session = self._pipeline_with_slow_response_scanner("open")
+        pipeline, _session = self._pipeline_with_slow_response_scanner("open")
         result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
         assert result.status == 200
 
     async def test_response_timeout_closed_still_passes_through(self) -> None:
         # The behavior that changed: closed mode must NOT block on a response
         # scan timeout (it still blocks on a genuine response detection).
-        pipeline, session = self._pipeline_with_slow_response_scanner("closed")
+        pipeline, _session = self._pipeline_with_slow_response_scanner("closed")
         result = await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
         assert result.status == 200
 
@@ -422,7 +423,7 @@ class TestUsageReporting:
         return cp
 
     async def test_usage_reported_on_success(self) -> None:
-        pipeline, session = make_pipeline(
+        pipeline, _session = make_pipeline(
             session=FakeSession(FakeResponse(status=200, body=self.OPENAI_BODY))
         )
         cp = self._cp_client()
@@ -640,11 +641,13 @@ class TestUsageReporting:
         cp.usage_reporting_enabled = False
         cp.report_usage = AsyncMock()
 
-        with patch("aiproxyguard.pipeline.get_client", return_value=cp):
-            with patch("aiproxyguard.pipeline.json.loads") as mock_loads:
-                await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
-                await asyncio.sleep(0)
-                mock_loads.assert_not_called()
+        with (
+            patch("aiproxyguard.pipeline.get_client", return_value=cp),
+            patch("aiproxyguard.pipeline.json.loads") as mock_loads,
+        ):
+            await pipeline.process(make_request(b'{"model": "gpt-4o"}'))
+            await asyncio.sleep(0)
+            mock_loads.assert_not_called()
         cp.report_usage.assert_not_called()
 
 
@@ -726,7 +729,7 @@ class TestRouterAlias:
 
     async def test_scanner_sees_rewritten_model(self) -> None:
         cfg = _routing_config({"t": {"ordered_pool": ["cheap"]}})
-        pipeline, session = make_pipeline(config=cfg)
+        pipeline, _session = make_pipeline(config=cfg)
 
         await pipeline.process(make_request(b'{"model": "router:t", "messages": []}'))
 
@@ -747,7 +750,7 @@ class TestRouterAlias:
 
     async def test_empty_pool_fails_closed_400(self) -> None:
         cfg = _routing_config({"t": {"ordered_pool": []}})
-        pipeline, session = make_pipeline(config=cfg)
+        pipeline, _session = make_pipeline(config=cfg)
 
         result = await pipeline.process(make_request(b'{"model": "router:t"}'))
 
@@ -1126,7 +1129,7 @@ class TestResponseCache:
 
     async def test_hit_preserves_stored_status(self) -> None:
         cached = CachedResponse(b'{"ok":1}', "application/json", 1, 1, "gpt-4o-mini", status=201)
-        pipeline, session = make_pipeline()
+        pipeline, _session = make_pipeline()
         pipeline._cache = _FakeCache(hit=cached)
 
         result = await pipeline.process(make_request(_CACHEABLE))
@@ -1136,7 +1139,7 @@ class TestResponseCache:
 
     async def test_non_2xx_not_stored(self) -> None:
         cache = _FakeCache(hit=None)
-        pipeline, session = make_pipeline(
+        pipeline, _session = make_pipeline(
             session=FakeSession(FakeResponse(status=400, body=b'{"error":"bad"}'))
         )
         pipeline._cache = cache
@@ -1204,7 +1207,7 @@ class TestResponseCache:
         # A cache hit that the response scanner blocks delivered no value, so it
         # must NOT accrue savings.
         cached = CachedResponse(b'{"cached":true}', "application/json", 5, 7, "gpt-4o-mini")
-        pipeline, session = make_pipeline()
+        pipeline, _session = make_pipeline()
         pipeline._cache = _FakeCache(hit=cached)
         pipeline._scan_response = AsyncMock(
             return_value=PipelineResult(status=403, body=b"blocked")
@@ -1258,7 +1261,6 @@ class TestResponseCache:
 
         async def _slow_scan(*_args, **_kwargs):
             await asyncio.sleep(0.05)
-            return None
 
         pipeline._scan_response = _slow_scan
         cp = MagicMock()
