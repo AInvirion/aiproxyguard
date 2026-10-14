@@ -6,6 +6,7 @@
     "oscarvalenzuelab",
     "cla-bot[bot]",
     "diegojorquera",
-    "dependabot[bot]"
+    "dependabot[bot]",
+    "github-actions[bot]"
   ]
 }

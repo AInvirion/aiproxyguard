@@ -1,3 +1,9 @@
+# Copyright (c) 2025-2026 AInvirion LLC. All Rights Reserved.
+# Developed by AInvirion LLC in 2026 for SCANOSS.
+# PROPRIETARY AND CONFIDENTIAL.
+# Unauthorized copying, modification, distribution or use of this file
+# is prohibited without written permission from AInvirion LLC.
+
 name: CLA Auto Sign
 
 on:
@@ -18,41 +24,49 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Add contributor to CLA whitelist
-        id: add-contributor
+      - name: Decide whether the contributor needs adding
+        id: plan
         env:
           CONTRIBUTOR: ${{ github.event.comment.user.login }}
         run: |
           if jq -e --arg user "$CONTRIBUTOR" '.contributors | index($user)' .clabot > /dev/null 2>&1; then
-            echo "already_signed=true" >> $GITHUB_OUTPUT
+            echo "needed=false" >> "$GITHUB_OUTPUT"
           else
-            jq --arg user "$CONTRIBUTOR" '.contributors += [$user]' .clabot > .clabot.tmp
-            mv .clabot.tmp .clabot
-            echo "already_signed=false" >> $GITHUB_OUTPUT
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "branch=cla-accept/${CONTRIBUTOR}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and push changes
-        if: steps.add-contributor.outputs.already_signed == 'false'
+      - name: Add contributor on a branch
+        if: steps.plan.outputs.needed == 'true'
         env:
           CONTRIBUTOR: ${{ github.event.comment.user.login }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          jq --arg user "$CONTRIBUTOR" '.contributors += [$user]' .clabot > .clabot.tmp
+          mv .clabot.tmp .clabot
           git add .clabot
-          git commit -m "chore: add $CONTRIBUTOR to CLA contributors [skip ci]"
-          git push
+          git commit -m "chore: add $CONTRIBUTOR to CLA contributors"
+          git push -u origin "$BRANCH"
 
-      - name: Trigger CLA recheck
-        if: steps.add-contributor.outputs.already_signed == 'false'
-        uses: actions/github-script@v9
+      - name: Open pull request for the acceptance
+        if: steps.plan.outputs.needed == 'true'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTRIBUTOR: ${{ github.event.comment.user.login }}
-        with:
-          script: |
-            const contributor = process.env.CONTRIBUTOR;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: 'Thanks @' + contributor + '! Your CLA signature has been recorded.\n\n@cla-bot check'
-            });
+          BRANCH: ${{ steps.plan.outputs.branch }}
+        run: |
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore: add $CONTRIBUTOR to CLA contributors" \
+            --body "Records the acceptance from @$CONTRIBUTOR. Merge to let their pull request pass the CLA check."
+
+      - name: Point the contributor at the pending acceptance
+        if: steps.plan.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTRIBUTOR: ${{ github.event.comment.user.login }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" \
+            --body "Thanks @$CONTRIBUTOR. Your acceptance is recorded in a pull request that the maintainers need to merge. Once it is merged, comment \`recheck\` on this pull request."
